@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# circuitAnt executable: natural-language requests on stdin, #RESPONSE blocks
+# on stdout.
+#
+#   circuitAnt/circuitant -config circuitAnt/config.yaml < testcase/test10/prompt.txt
+#
+# Runs main.py inside OpenROAD's embedded Python (the OpenDB modules only exist
+# there).  Relative paths in prompts and outputs resolve against the current
+# directory, so run it from where the testcase paths make sense.
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OPENROAD="${OPENROAD_BIN:-$HOME/OpenROAD/build/bin/openroad}"
+export ABC_BIN="${ABC_BIN:-$HOME/abc/abc}"  # ABC used for equivalence proofs
+[[ -x "$OPENROAD" ]] || { echo "circuitant: missing $OPENROAD" >&2; exit 127; }
+
+exec "$OPENROAD" -no_init -no_splash -no_settings -python -exit "$DIR/main.py" "$@"

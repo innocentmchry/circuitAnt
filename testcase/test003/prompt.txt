@@ -1,0 +1,10 @@
+This is the beginning of a new testcase. The case name is test003.
+Please load the design from the file test003.v located in the directory testcase/test003/.
+Please count all the gates in this design and report the total count broken down by gate type (AND, OR, NOT, NAND, NOR, XOR, XNOR, BUF, DFF).
+Compute the maximum logic depth of the fanin cone of output n11[25].
+Determine whether signals n29 and n205 are functionally equivalent.
+Determine the longest combinational path depth from n4[11] to n452.
+Report the number of each gate type in the logic cone of output n11[24].
+How many flip-flops were found to have enable or hold structures in their D input logic?
+Compute the transitive fanout cone of input n4[11].
+Please write the current design to the output file test003_out.v.

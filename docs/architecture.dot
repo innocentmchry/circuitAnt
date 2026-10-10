@@ -1,0 +1,64 @@
+// circuitAnt architecture.  Regenerate: dot -Tpng -Gdpi=150 docs/architecture.dot -o docs/architecture.png
+digraph circuitAnt {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=13, bgcolor="white", pad=0.3, nodesep=0.35, ranksep=0.55,
+         label="circuitAnt: Circuit Analysis and Transformation using LLM-guided tool calls", labelloc=t, fontsize=18];
+  node  [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=11, color="#4a5568", penwidth=1.2];
+  edge  [fontname="Helvetica", fontsize=9, color="#4a5568", arrowsize=0.7];
+
+  subgraph cluster_in {
+    label="Input"; style="rounded,dashed"; color="#a0aec0"; fontcolor="#4a5568";
+    prompt [label="testcase/<case>/\nprompt.txt + <case>.v\n(one request per line)", fillcolor="#edf2f7"];
+  }
+
+  subgraph cluster_run {
+    label="Run"; style="rounded"; color="#90cdf4"; fontcolor="#2b6cb0"; bgcolor="#f5faff";
+    runsh  [label="run.sh\n(all testcases in a folder)", fillcolor="#bee3f8"];
+    exe    [label="circuitant\nmain.py\n(inside OpenROAD Python)", fillcolor="#bee3f8"];
+  }
+
+  subgraph cluster_agent {
+    label="Agent"; style="rounded"; color="#d6bcfa"; fontcolor="#6b46c1"; bgcolor="#faf5ff";
+    agent [label="agent.py\nsystem prompt  ·  history summary\nLLM loop", fillcolor="#e9d8fd"];
+    tools [label="tools.py\n30 tools = Tools methods\n(schemas generated)", fillcolor="#e9d8fd"];
+  }
+  llm [label="OpenAI\nchat model", shape=ellipse, fillcolor="#fefcbf", color="#b7791f"];
+
+  subgraph cluster_engine {
+    label="eda_engine"; style="rounded"; color="#9ae6b4"; fontcolor="#276749"; bgcolor="#f0fff4";
+    io     [label="design_io\niccad/ · generic/\nread & write netlists", fillcolor="#c6f6d5"];
+    design [label="Design\nOpenDB block\n+ Cell table (LEF / Liberty)", fillcolor="#c6f6d5"];
+    analysis [label="analysis\ncounts · depth · paths\ncones · fanout · patterns", fillcolor="#c6f6d5"];
+    transform [label="transformation\ncleanup · buffering\nnaming · resynthesis", fillcolor="#c6f6d5"];
+    verify [label="verification\nequivalence · signals\nsymmetry", fillcolor="#c6f6d5"];
+    shared [label="utils (queries)\nedit (edits)\nblif (ABC I/O)", fillcolor="#f0fff4", style="rounded,filled,dashed"];
+  }
+
+  subgraph cluster_ext {
+    label="Standard EDA tools"; style="rounded"; color="#fbd38d"; fontcolor="#c05621"; bgcolor="#fffaf0";
+    openroad [label="OpenROAD / OpenDB\nOpenSTA", fillcolor="#feebc8"];
+    abc      [label="ABC\nresynthesis · cec", fillcolor="#feebc8"];
+  }
+
+  subgraph cluster_out {
+    label="Outputs"; style="rounded,dashed"; color="#a0aec0"; fontcolor="#4a5568";
+    out  [label="output/\n<case>.log (#RESPONSE)\nwritten netlists · result lists", fillcolor="#edf2f7"];
+    dbg  [label="debugging/\nlogs/<run>/ · run_analysis_<run>.csv", fillcolor="#edf2f7"];
+  }
+
+  prompt -> runsh -> exe;
+  exe -> agent [label="request\n+ context"];
+  agent -> llm [label="prompt + tools", dir=both];
+  agent -> tools [label="tool calls"];
+  tools -> io; tools -> analysis; tools -> transform; tools -> verify;
+  io -> design;
+  analysis -> design [style=dashed, arrowhead=none];
+  transform -> design [style=dashed, arrowhead=none];
+  verify -> design [style=dashed, arrowhead=none];
+  analysis -> shared [style=dotted, arrowhead=none]; transform -> shared [style=dotted, arrowhead=none];
+  verify -> shared [style=dotted, arrowhead=none];
+  design -> openroad [label="read · link · query", dir=both];
+  transform -> abc [label="BLIF round trip"];
+  verify -> abc [label="cec"];
+  agent -> out [label="responses"];
+  agent -> dbg [label="developer mode", style=dashed];
+}

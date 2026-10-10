@@ -1,0 +1,341 @@
+/*
+ * Verilog gate primitives as Liberty cells.
+ *
+ * UNIT-DELAY MODEL (synthetic, deliberate): every input->output arc is exactly
+ * 1.0 time unit, independent of load and slew (scalar tables, zero transition,
+ * zero pin capacitance).  STA arrival time therefore equals logic depth.  Unit
+ * area, no power.  NOT a real library: do not read these numbers as ns/um^2.
+ *
+ * Pin order is the Verilog positional order: Y, A[, B]; dff is CK, RN, SN, D, Q.
+ * dff: posedge CK, async active-low RN (clear) and SN (preset), RN has priority.
+ * tiehi / tielo drive constant 1 / 0 (for constants such as 1'b1).
+ */
+library (iccad_primitives) {
+  delay_model : table_lookup;
+  time_unit : "1ns";
+  capacitive_load_unit (1, pf);
+  voltage_unit : "1V";
+  current_unit : "1mA";
+  pulling_resistance_unit : "1kohm";
+  leakage_power_unit : "1nW";
+  nom_process : 1.0;  nom_temperature : 25.0;  nom_voltage : 1.0;
+  input_threshold_pct_rise : 50.0;
+  input_threshold_pct_fall : 50.0;
+  output_threshold_pct_rise : 50.0;
+  output_threshold_pct_fall : 50.0;
+  slew_lower_threshold_pct_rise : 20.0;
+  slew_lower_threshold_pct_fall : 20.0;
+  slew_upper_threshold_pct_rise : 80.0;
+  slew_upper_threshold_pct_fall : 80.0;
+  default_max_transition : 100.0;
+
+  cell (AND) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "A*B";
+      timing () {
+        related_pin : "A";
+        timing_sense : positive_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "B";
+        timing_sense : positive_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (B) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (OR) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "A+B";
+      timing () {
+        related_pin : "A";
+        timing_sense : positive_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "B";
+        timing_sense : positive_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (B) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (NOT) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "!A";
+      timing () {
+        related_pin : "A";
+        timing_sense : negative_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (NAND) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "!(A*B)";
+      timing () {
+        related_pin : "A";
+        timing_sense : negative_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "B";
+        timing_sense : negative_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (B) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (NOR) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "!(A+B)";
+      timing () {
+        related_pin : "A";
+        timing_sense : negative_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "B";
+        timing_sense : negative_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (B) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (XOR) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "A^B";
+      timing () {
+        related_pin : "A";
+        timing_sense : non_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "B";
+        timing_sense : non_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (B) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (XNOR) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "!(A^B)";
+      timing () {
+        related_pin : "A";
+        timing_sense : non_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "B";
+        timing_sense : non_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (B) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (BUF) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "A";
+      timing () {
+        related_pin : "A";
+        timing_sense : positive_unate;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+    }
+    pin (A) {
+      direction : input;
+      capacitance : 0.0;
+    }
+  }
+  cell (TIEHI) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "1";
+    }
+  }
+  cell (TIELO) {
+    area : 1.0;
+    pin (Y) {
+      direction : output;
+      function : "0";
+    }
+  }
+  cell (DFF) {
+    area : 1.0;
+    pin (CK) {
+      direction : input;
+      capacitance : 0.0;
+      clock : true;
+    }
+    pin (RN) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (SN) {
+      direction : input;
+      capacitance : 0.0;
+    }
+    pin (D) {
+      direction : input;
+      capacitance : 0.0;
+      timing () {
+        related_pin : "CK";
+        timing_type : setup_rising;
+        rise_constraint (scalar) { values ("0.0"); }
+        fall_constraint (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "CK";
+        timing_type : hold_rising;
+        rise_constraint (scalar) { values ("0.0"); }
+        fall_constraint (scalar) { values ("0.0"); }
+      }
+    }
+    pin (Q) {
+      direction : output;
+      function : "IQ";
+      timing () {
+        related_pin : "CK";
+        timing_sense : non_unate;
+        timing_type : rising_edge;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "RN";
+        timing_sense : positive_unate;
+        timing_type : clear;
+        cell_fall (scalar) { values ("1.0"); }
+        fall_transition (scalar) { values ("0.0"); }
+      }
+      timing () {
+        related_pin : "SN";
+        timing_sense : negative_unate;
+        timing_type : preset;
+        cell_rise (scalar) { values ("1.0"); }
+        rise_transition (scalar) { values ("0.0"); }
+      }
+    }
+    /* The ff group must come AFTER the pins: OpenSTA adds IQ/IQN as
+       internal ports, and positional Verilog connections follow the
+       Liberty port order, so an earlier ff group shifts every pin. */
+    ff (IQ, IQN) {
+      next_state : "D";
+      clocked_on : "CK";
+      clear : "!RN";
+      preset : "!SN";
+      /* RN and SN both low: reset wins (Q=0, QN=1). */
+      clear_preset_var1 : L;
+      clear_preset_var2 : H;
+    }
+  }
+}

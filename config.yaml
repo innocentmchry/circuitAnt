@@ -1,0 +1,30 @@
+# circuitAnt configuration (paths are relative to this file).
+
+openai:
+  # The key is read from file mentioned here
+  api_key_file: ./.env
+  model: gpt-4o-mini
+
+# Logs: every run gets its own folder, debugging/logs/<run id>/ (run.sh: one for all
+# its testcases), holding openroad.log -- everything OpenROAD prints, kept off stdout,
+# which carries only the #RESPONSE blocks -- and, in developer mode, the request logs.
+
+# Testcase logs (<case>.log), written designs and result lists (paths_*.txt, cone_*.txt, ...)
+# go here (relative to this file).  Leave it out to write them to the current directory.
+output_dir: ./output
+
+# How netlists are read (read_design).  iccad: the ICCAD gate-primitive format on the
+# built-in gate library.  generic: any gate-level Verilog OpenROAD can read, with
+# its own LEF (technology first) and Liberty files.  Generic netlists must be flattened
+# (a single module); that module is the top.
+design:
+  format: iccad
+  # format: generic
+  # lef: [/home/innocent/OpenROAD/test/Nangate45/Nangate45_tech.lef,
+  #       /home/innocent/OpenROAD/test/Nangate45/Nangate45_stdcell.lef]
+  # liberty: [/home/innocent/OpenROAD/test/Nangate45/Nangate45_typ.lib]
+
+developer:
+  mode: true          # one human-readable log per request in debugging/logs/<run>/ (cada1067 format), and
+                      # the tools each request called in debugging/run_analysis_<run>.csv
+  # log_dir: /some/dir  # logs go to <log_dir>/logs/<run>/ instead of debugging/logs/<run>/

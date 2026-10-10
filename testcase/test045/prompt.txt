@@ -1,0 +1,7 @@
+This is the beginning of a new testcase. The case name is test045.
+Please load the design from the file test045.v located in the directory testcase/test045/.
+Count all the gates in this design and break the total down by gate type (AND, OR, NOT, NAND, NOR, XOR, XNOR, BUF, DFF).
+Locate every back-to-back inverter pair and collapse it into a plain wire. Ensure functional equivalence is preserved.
+What is the maximum combinational logic depth in the design now?
+Determine whether the current netlist is equivalent to the netlist as last loaded from disk.
+Please write the current design to the output file test045_out.v.

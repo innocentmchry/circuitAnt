@@ -1,0 +1,194 @@
+# The ICCAD gate primitives as standard cells (AND, OR, ..., DFF, TIEHI/TIELO).
+# The ICCAD reader rewrites the contest netlists' primitives (and g1(y, a, b))
+# into instances of these cells with named pins (AND g1 (.Y(y), .A(a), .B(b))).
+#
+# NO PIN GEOMETRY: cells are a nominal 1x1 um and pins have no shapes or
+# layers, so no technology LEF is needed.  This exists only so OpenROAD keeps
+# the instances (connectivity only).  It is NOT suitable for placement,
+# routing, or timing.
+#
+# Pin order is the Verilog positional order: output first, then inputs
+# (Y, A, B) / (Y, A); dff is (CK, RN, SN, D, Q); tiehi/tielo is (Y).
+VERSION 5.8 ;
+BUSBITCHARS "[]" ;
+DIVIDERCHAR "/" ;
+UNITS
+  DATABASE MICRONS 2000 ;
+END UNITS
+
+MACRO AND
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+  PIN B
+    DIRECTION INPUT ;
+  END B
+END AND
+
+MACRO OR
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+  PIN B
+    DIRECTION INPUT ;
+  END B
+END OR
+
+MACRO NOT
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+END NOT
+
+MACRO NAND
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+  PIN B
+    DIRECTION INPUT ;
+  END B
+END NAND
+
+MACRO NOR
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+  PIN B
+    DIRECTION INPUT ;
+  END B
+END NOR
+
+MACRO XOR
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+  PIN B
+    DIRECTION INPUT ;
+  END B
+END XOR
+
+MACRO XNOR
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+  PIN B
+    DIRECTION INPUT ;
+  END B
+END XNOR
+
+MACRO BUF
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+  PIN A
+    DIRECTION INPUT ;
+  END A
+END BUF
+
+MACRO DFF
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN CK
+    DIRECTION INPUT ;
+  END CK
+  PIN RN
+    DIRECTION INPUT ;
+  END RN
+  PIN SN
+    DIRECTION INPUT ;
+  END SN
+  PIN D
+    DIRECTION INPUT ;
+  END D
+  PIN Q
+    DIRECTION OUTPUT ;
+  END Q
+  # Power pins: OpenSTA sizes an instance's connection list by the LEF pin count but
+  # indexes it by Liberty port, which includes the ff group's internal IQ/IQN; without
+  # these two pins (as in real libraries) linking a dff whose pins are all nets crashes.
+  PIN VDD
+    DIRECTION INOUT ;
+    USE POWER ;
+  END VDD
+  PIN VSS
+    DIRECTION INOUT ;
+    USE GROUND ;
+  END VSS
+END DFF
+
+MACRO TIEHI
+  CLASS CORE TIEHIGH ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+END TIEHI
+
+MACRO TIELO
+  CLASS CORE TIELOW ;
+  ORIGIN 0 0 ;
+  SIZE 1.0 BY 1.0 ;
+  SYMMETRY X Y ;
+  PIN Y
+    DIRECTION OUTPUT ;
+  END Y
+END TIELO
+
+END LIBRARY
