@@ -12,10 +12,6 @@ How to change or extend the code, and the rules it follows: [DEVELOPING.md](DEVE
 
 ![circuitAnt architecture](docs/architecture.png)
 
-The diagram's source is [docs/architecture.dot](docs/architecture.dot) (Graphviz); after
-editing it, regenerate the image with
-`dot -Tpng -Gdpi=150 docs/architecture.dot -o docs/architecture.png`.
-
 * Each line of the prompt file is one request. The agent sends it to the model
   with a summary of the earlier requests; the model calls tools; the answer is
   printed as a `#RESPONSE n` block.
