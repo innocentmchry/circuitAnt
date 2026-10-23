@@ -9,3 +9,4 @@ debugging/run_analysis_*.csv
 # Python
 __pycache__/
 *.pyc
+*.sqlite

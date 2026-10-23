@@ -89,7 +89,12 @@ def main() -> int:
     if config.get("output_dir"):
         output_dir = Path(args.config).resolve().parent / config["output_dir"]
         output_dir.mkdir(parents=True, exist_ok=True)
-    agent = Agent(key, model, config.get("developer", {}), design_config(config, args.config), output_dir)
+    plan_cache_cfg = config.get("plan_cache")
+    if plan_cache_cfg and plan_cache_cfg.get("path"):
+        plan_cache_cfg = dict(plan_cache_cfg)
+        plan_cache_cfg["path"] = str((Path(args.config).resolve().parent / plan_cache_cfg["path"]).resolve())
+    agent = Agent(key, model, config.get("developer", {}), design_config(config, args.config), output_dir,
+                  plan_cache=plan_cache_cfg)
 
     n = 0
     context = ""  # summary of earlier requests, passed into the next one

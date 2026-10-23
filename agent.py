@@ -10,6 +10,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from debugging.developer import ConversationLogger, NoopLogger, RunAnalysis, extract_case_name, run_logs_dir
+from plan_cache.trace import ExecutionTrace, ToolCallRecord
 from tools import Tools, schema
 
 MAX_TOOL_ROUNDS = 20
@@ -42,10 +43,12 @@ class Agent:
     """
 
     def __init__(self, api_key: str, model: str, developer: dict | None = None,
-                 design: dict | None = None, output_dir: str | Path = ".") -> None:
+                 design: dict | None = None, output_dir: str | Path = ".",
+                 plan_cache: dict | None = None) -> None:
         """developer: the config's `developer` section ({"mode": bool, "log_dir": path});
         design: its `design` section (how netlists are read, see design_io.read_design);
-        output_dir: where testcase logs, written designs and result lists go."""
+        output_dir: where testcase logs, written designs and result lists go;
+        plan_cache: the config's `plan_cache` section."""
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.tools = Tools(design, output_dir)
@@ -55,6 +58,13 @@ class Agent:
         self.requests = 0
         self.case = ""
         self.history = []  # one line per earlier request that called tools
+        self.plan_cache_config = plan_cache or {}
+        self.plan_cache_enabled = bool(self.plan_cache_config.get("enabled"))
+        self.last_trace = None
+        self.plan_cache = None
+        if self.plan_cache_enabled:
+            from plan_cache.manager import PlanCacheManager
+            self.plan_cache = PlanCacheManager(self.plan_cache_config, self.client, self.tools, model=self.model)
 
         # Developer mode: one human-readable log file per request.
         developer = developer or {}
@@ -104,13 +114,40 @@ class Agent:
     def ask(self, request: str, context_summary: str = "") -> str:
         self.requests += 1
         self.case = extract_case_name(request) or self.tools.case or self.case
+        ask_start = time.monotonic()
         with self.Logger(self.requests, self.logs_dir, self.model, label=self.case) as log:
             log.log_user_input(request)
             if context_summary and self.developer_mode:
                 log._fh.write(f"  ── CONTEXT ──\n  {context_summary}\n  ─────────────\n\n")
             tool_summaries, calls = [], []
+            self.last_trace = None
+
+            # Try Plan Cache first if enabled
+            if self.plan_cache is not None:
+                hit, cached_ans, cache_summaries, cache_calls, cache_trace = self.plan_cache.try_execute(
+                    request, context_summary=context_summary, log=log, summarize_fn=_summarize
+                )
+                if hit:
+                    tool_summaries.extend(cache_summaries)
+                    calls.extend(cache_calls)
+                    self._remember(request, tool_summaries)
+                    self.last_trace = cache_trace
+                    if self.run_analysis:
+                        self.run_analysis.record(self.tools.case or self.case, request, calls)
+                    log.log_final_response(cached_ans)
+                    return cached_ans
+
+            # Normal LLM agent execution
             answer = self._answer(request, context_summary, tool_summaries, calls, log)
             self._remember(request, tool_summaries)
+            if self.plan_cache_enabled and self.last_trace:
+                self.last_trace.wall_clock_time = time.monotonic() - ask_start
+                self.last_trace.answer = answer
+                self.last_trace.context_summary = context_summary
+                self.last_trace.success = not answer.startswith("[ERROR]")
+                if self.plan_cache is not None and self.last_trace.success:
+                    self.plan_cache.record_and_learn(request, self.last_trace)
+
             if self.run_analysis:  # the testcase name is known once set_testcase_name has run
                 self.run_analysis.record(self.tools.case or self.case, request, calls)
             log.log_final_response(answer)
@@ -122,27 +159,91 @@ class Agent:
         if context_summary:
             messages.append({"role": "system", "content": f"Current state: {context_summary}"})
         messages.append({"role": "user", "content": request})
+
+        recorded_tool_calls: list[ToolCallRecord] = []
+        prompt_tokens = 0
+        completion_tokens = 0
+        total_tokens = 0
+        llm_time = 0.0
+        tool_time = 0.0
+
         for turn in range(1, MAX_TOOL_ROUNDS + 1):
             log.log_llm_prompt(messages, turn)
             start = time.monotonic()
             response = self.client.chat.completions.create(
                 model=self.model, messages=messages, tools=self.schemas)
-            log.log_llm_response(response, turn, time.monotonic() - start)
+            turn_llm_time = time.monotonic() - start
+            llm_time += turn_llm_time
+            log.log_llm_response(response, turn, turn_llm_time)
+
+            if self.plan_cache_enabled:
+                usage = getattr(response, "usage", None)
+                if usage:
+                    prompt_tokens += getattr(usage, "prompt_tokens", 0) or 0
+                    completion_tokens += getattr(usage, "completion_tokens", 0) or 0
+                    total_tokens += getattr(usage, "total_tokens", 0) or 0
+
             reply = response.choices[0].message
             messages.append(reply.model_dump(exclude_none=True))
             if not reply.tool_calls:
-                return reply.content or ""
+                answer = reply.content or ""
+                if self.plan_cache_enabled:
+                    self.last_trace = ExecutionTrace(
+                        request=request,
+                        tool_calls=recorded_tool_calls,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        total_tokens=total_tokens,
+                        llm_time=llm_time,
+                        tool_time=tool_time,
+                        success=True,
+                        answer=answer,
+                        context_summary=context_summary,
+                    )
+                return answer
             for call in reply.tool_calls:
                 try:
-                    calls.append((call.function.name, json.loads(call.function.arguments or "{}")))
+                    call_args = json.loads(call.function.arguments or "{}")
                 except json.JSONDecodeError:
-                    calls.append((call.function.name, {"arguments": call.function.arguments}))
+                    call_args = {"arguments": call.function.arguments}
+                calls.append((call.function.name, call_args))
+                tool_start = time.monotonic()
                 result = self._run(call.function)
+                turn_tool_time = time.monotonic() - tool_start
+                tool_time += turn_tool_time
+                if self.plan_cache_enabled:
+                    try:
+                        parsed = json.loads(result)
+                        res_val = parsed.get("result", parsed.get("error"))
+                    except Exception:
+                        res_val = result
+                    recorded_tool_calls.append(
+                        ToolCallRecord(
+                            name=call.function.name,
+                            arguments=call_args,
+                            result=res_val,
+                            elapsed=turn_tool_time,
+                        )
+                    )
                 log.log_tool_result(call.function.name, result)
                 tool_summaries.append(_summarize(call.function.name, result))
                 if call.function.name == "read_design" and '"error"' not in result:
                     log.log_netlist(self.tools.design)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+
+        if self.plan_cache_enabled:
+            self.last_trace = ExecutionTrace(
+                request=request,
+                tool_calls=recorded_tool_calls,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                llm_time=llm_time,
+                tool_time=tool_time,
+                success=False,
+                answer="[ERROR] too many tool calls without an answer",
+                context_summary=context_summary,
+            )
         return "[ERROR] too many tool calls without an answer"
 
     def _run(self, call) -> str:
