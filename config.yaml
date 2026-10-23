@@ -28,3 +28,12 @@ developer:
   mode: true          # one human-readable log per request in debugging/logs/<run>/ (cada1067 format), and
                       # the tools each request called in debugging/run_analysis_<run>.csv
   # log_dir: /some/dir  # logs go to <log_dir>/logs/<run>/ instead of debugging/logs/<run>/
+
+# Semantic plan cache: reuse generalized tool-call plans across similar requests.
+plan_cache:
+  enabled: false
+  path: output/plan_cache.sqlite
+  embedding_model: text-embedding-3-small
+  similarity_threshold: 0.85
+  max_failures_before_drop: 3
+

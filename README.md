@@ -252,3 +252,26 @@ call; `<run>` is its start time, e.g. `20261010_190424`.
 * **generic** — any flattened gate-level netlist OpenROAD can read with its LEF and
   Liberty, e.g. Synopsys DC output mapped to Nangate45 (`examples/`). Written back
   with OpenROAD's `write_verilog`.
+
+## Semantic Plan Cache
+
+circuitAnt includes an optional semantic plan cache ([plan_cache/](plan_cache/)) inspired by [Agentic Plan Caching](https://arxiv.org/abs/2506.14852). It generalizes and reuses tool-calling plans across similar requests and across unseen netlists without raw prompt/answer caching.
+
+### Configuration (`config.yaml`)
+
+```yaml
+plan_cache:
+  enabled: false                      # set true to activate plan caching
+  path: output/plan_cache.sqlite      # SQLite database storing plan templates
+  embedding_model: text-embedding-3-small
+  similarity_threshold: 0.85          # cosine similarity threshold for template match
+  max_failures_before_drop: 3         # drop templates failing execution/equivalence
+```
+
+### Key Principles
+1. **Trace Recording**: After successful normal agent runs, records request, ordered tool calls, arguments, parsed results, and latency/token counts.
+2. **Template Generalization**: Linear tool plans are converted into parameterized templates with typed slots (`<SIGNAL:0>`, `<GATE_TYPE:0>`, `<NUMBER:0>`) and inter-step dataflow references (`$step_k.result.<path>`). Non-linear traces (loops or per-item repetitions) are detected and excluded from the cache.
+3. **Deterministic Matching & Validation**: Requires cosine similarity $\ge$ threshold, deterministic slot filling against the loaded OpenDB netlist, valid tool existence, and an opposite-word check (e.g. `max`/`min`, `fanin`/`fanout`, `count`/`list`).
+4. **Transactional Execution & Fallback**: Mutating plans take a design snapshot before execution and verify equivalence with `check_equivalence()`. On any step failure or verification failure, the snapshot is automatically restored and the agent falls back to normal LLM execution.
+5. **Evaluation**: Run `./openroad_python.sh eval/plan_cache_eval.py` to evaluate matching accuracy, token savings, latency reductions, and threshold sweeps.
+

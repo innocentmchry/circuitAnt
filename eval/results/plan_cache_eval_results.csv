@@ -1,0 +1,40 @@
+prompt,category,expected_hit,cache_hit,similarity,correctness,cached_tokens,uncached_tokens,cached_latency_sec,uncached_latency_sec
+what is the total gate count of the circuit,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+count all gates in the netlist,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+how many total gates are in this design,analysis,True,True,0.868,PASS,55,230,0.316,1.362
+count the NAND gates in the netlist,analysis,True,False,0.000,PASS (fallback),230,230,1.385,1.362
+how many NOR gates are in the design,analysis,True,True,1.000,PASS,55,230,0.317,1.362
+number of AND gates in the circuit,analysis,True,False,0.000,PASS (fallback),230,230,1.389,1.362
+list all NAND gates in the design,analysis,False,True,0.843,PASS,55,230,0.317,1.362
+find the maximum combinational logic depth,analysis,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+critical path depth of the whole design,analysis,True,False,0.000,PASS (fallback),230,230,1.385,1.362
+what is the max depth in the netlist,analysis,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+what is the minimum depth of the design,analysis,False,False,0.000,PASS (correct miss),230,230,1.406,1.362
+how many pins does net n21 drive,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+find fanout of wire n21,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+fanout of signal n22,analysis,True,True,0.851,PASS,55,230,0.316,1.362
+transitive fanin cone of net n4[0],analysis,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+find the gates in the fanin cone of signal n4[0],analysis,True,True,0.802,PASS,55,230,0.317,1.362
+gates in the logic cone of n4[1],analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+transitive fanout cone of signal n4[0],analysis,False,False,0.000,PASS (correct miss),230,230,1.387,1.362
+combinational paths between n0 and n4[0],analysis,True,True,0.824,PASS,55,230,0.313,1.362
+all paths from input n0 to output n4[0],analysis,True,False,0.000,PASS (fallback),230,230,1.382,1.362
+find paths from n1 to n4[0],analysis,True,True,0.966,PASS,55,230,0.315,1.362
+articulation points from n0 to n4[0],analysis,True,True,0.833,PASS,55,230,0.316,1.362
+gates on every path from n0 to n4[0],analysis,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+cut points between n1 and n4[0],analysis,True,True,0.971,PASS,55,230,0.314,1.362
+find inverter pairs in the netlist,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+count back-to-back NOT gates,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+number of inverter pairs in the design,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+find structural duplicates in the circuit,analysis,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+count duplicate gate groups in the netlist,analysis,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+how many duplicate groups are there,analysis,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+prune unused gates in the netlist,transformation,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+trim dangling wires and gates,transformation,True,False,0.000,PASS (fallback),230,230,1.385,1.362
+delete unused dangling logic,transformation,True,False,0.000,PASS (fallback),230,230,1.385,1.362
+merge back-to-back inverters,transformation,True,False,0.000,PASS (fallback),230,230,1.547,1.362
+collapse inverter pairs in the netlist,transformation,True,True,0.845,PASS,55,230,0.315,1.362
+remove back-to-back NOT pairs,transformation,True,False,0.000,PASS (fallback),230,230,1.387,1.362
+check functional equivalence of the current design,verification,True,False,0.000,PASS (fallback),230,230,1.386,1.362
+confirm that the netlist is equivalent to original,verification,True,False,0.000,PASS (fallback),230,230,1.384,1.362
+prove equivalence with the loaded netlist,verification,True,False,0.000,PASS (fallback),230,230,1.382,1.362
