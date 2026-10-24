@@ -11,7 +11,7 @@ openai:
 
 # Testcase logs (<case>.log), written designs and result lists (paths_*.txt, cone_*.txt, ...)
 # go here (relative to this file).  Leave it out to write them to the current directory.
-output_dir: ./output
+output_dir: ./output_temp
 
 # How netlists are read (read_design).  iccad: the ICCAD gate-primitive format on the
 # built-in gate library.  generic: any gate-level Verilog OpenROAD can read, with
@@ -25,6 +25,6 @@ design:
   # liberty: [/home/innocent/OpenROAD/test/Nangate45/Nangate45_typ.lib]
 
 developer:
-  mode: true          # one human-readable log per request in debugging/logs/<run>/ (cada1067 format), and
+  mode: true          # one human-readable log per request in debugging/logs/<run>/, and
                       # the tools each request called in debugging/run_analysis_<run>.csv
   # log_dir: /some/dir  # logs go to <log_dir>/logs/<run>/ instead of debugging/logs/<run>/

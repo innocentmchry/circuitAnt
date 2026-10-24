@@ -1,8 +1,6 @@
 """Developer-mode conversation logging — writes human-readable logs of LLM conversations.
 
-Ported from cada1067 (src/developer.py) so the logs have the same structure;
-only format_netlist() differs: it prints a short summary of the OpenDB design
-instead of cada1067's full Netlist dump.
+format_netlist() prints a short summary of the OpenDB design, not a full dump.
 
 Only used when ``developer: mode: true`` in config.yaml.  When the flag is
 off, ``NoopLogger`` is used instead (zero runtime overhead).  In developer mode

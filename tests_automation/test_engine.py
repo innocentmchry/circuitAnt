@@ -2,7 +2,7 @@
 
     circuitAnt/openroad_python.sh circuitAnt/tests_automation/test_engine.py
 
-Expected test10 values were cross-checked against the cada1067 engine.
+Expected test10 values were cross-checked against an independent implementation.
 """
 import os
 import sys
@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from eda_engine import analysis, read_design, write_design  # noqa: E402
 
-TEST10 = HERE / "test10.v"  # ICCAD test10 (4836 gates); expected values cross-checked with cada1067
+TEST10 = HERE / "test10.v"  # ICCAD test10 (4836 gates); expected values cross-checked independently
 EXAMPLE = HERE.parent / "examples" / "dsp_circuit_1_16_bit_Nan45.v"
 NANGATE = Path.home() / "OpenROAD" / "test" / "Nangate45"
 NANGATE_CONFIG = {"format": "generic", "lef": [str(NANGATE / "Nangate45_tech.lef"), str(NANGATE / "Nangate45_stdcell.lef")],
@@ -77,7 +77,7 @@ class Test10(unittest.TestCase):
 
 
 class Test10Classes(unittest.TestCase):
-    """Depth with class keywords; expected values from the cada1067 engine."""
+    """Depth with class keywords; expected values cross-checked independently."""
 
     @classmethod
     def setUpClass(cls):

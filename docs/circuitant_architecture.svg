@@ -1,0 +1,271 @@
+<svg viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" width="1600" height="900" role="img" aria-labelledby="svgt svgd">
+  <title id="svgt">circuitAnt architecture</title>
+  <desc id="svgd">A designer's plain-English request goes to an LLM agent loop, which calls functions in the tool API. The tools query and edit the netlist held in OpenROAD's OpenDB, using ABC for resynthesis and equivalence checks, and the answer returns to the designer.</desc>
+  <defs><style>@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap");
+svg{
+  --page: #E6EAE8; --slide: #F8F9F7; --ink: #17212A; --muted: #56636D; --line: #C8D0CC; --wire: #3F4C56;
+  --agent: #4F44B5; --agent-tint: #ECEAF8;
+  --tool: #0C736B;  --tool-tint: #E2F1EE; --tool-hi: #C3E6DF;
+  --eda: #A3531A;   --eda-tint: #F6EBE0;
+  --abc: #36689A;   --abc-tint: #E3ECF5;
+  --term: #1D2730;  --term-fg: #DDE6EA;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", Helvetica, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;}
+
+.bg { fill: var(--slide); }
+.t-title { font: 800 44px var(--f-display); fill: var(--ink); letter-spacing: -0.01em; }
+.t-sub { font: 400 18px var(--f-body); fill: var(--muted); }
+.t-eyebrow { font: 600 11.5px var(--f-body); letter-spacing: .14em; fill: var(--muted); }
+.t-h { font: 700 20px var(--f-display); fill: var(--ink); }
+.t-h-sm { font: 700 16px var(--f-display); fill: var(--ink); }
+.t-body { font: 400 13.5px var(--f-body); fill: var(--ink); }
+.t-small { font: 400 12px var(--f-body); fill: var(--muted); }
+.t-quote { font: 500 15px var(--f-body); fill: var(--ink); }
+.t-mono { font: 400 13.5px var(--f-mono); fill: var(--ink); }
+.t-mono-b { font: 600 13.5px var(--f-mono); fill: var(--ink); }
+.t-term { font: 400 12.5px var(--f-mono); fill: var(--term-fg); }
+.t-group { font: 600 11px var(--f-body); letter-spacing: .12em; fill: var(--tool); }
+.t-wire { font: 500 11.5px var(--f-body); fill: var(--muted); }
+
+.card { fill: var(--slide); stroke: var(--line); stroke-width: 1.2; }
+.c-agent { fill: var(--agent-tint); stroke: var(--agent); stroke-width: 1.4; }
+.c-tool { fill: var(--tool-tint); stroke: var(--tool); stroke-width: 1.4; }
+.c-eda { fill: var(--eda-tint); stroke: var(--eda); stroke-width: 1.4; }
+.c-eda-in { fill: var(--slide); stroke: var(--eda); stroke-width: 1; }
+.c-abc { fill: var(--abc-tint); stroke: var(--abc); stroke-width: 1.4; }
+.pill { fill: var(--slide); stroke: var(--agent); stroke-width: 1; }
+.row { fill: var(--slide); }
+.row-hi { fill: var(--tool-hi); }
+.chip { fill: var(--eda-tint); stroke: var(--eda); stroke-width: .8; stroke-dasharray: 3 2; }
+.file { fill: var(--slide); stroke: var(--wire); stroke-width: 1; stroke-dasharray: 4 3; }
+.term { fill: var(--term); }
+.bubble { fill: var(--slide); stroke: var(--line); stroke-width: 1.2; }
+
+.wire { fill: none; stroke: var(--wire); stroke-width: 1.8; }
+.wire-soft { fill: none; stroke: var(--wire); stroke-width: 1.4; stroke-dasharray: 5 4; }
+.loop { fill: none; stroke: var(--agent); stroke-width: 1.4; }
+.head { fill: var(--wire); }
+.head-agent { fill: var(--agent); }
+.badge { fill: var(--ink); }
+.badge-t { font: 700 13px var(--f-display); fill: var(--slide); }
+.rule { stroke: var(--line); stroke-width: 1; }
+.acc-agent { fill: var(--agent); } .acc-tool { fill: var(--tool); } .acc-eda { fill: var(--eda); } .acc-abc { fill: var(--abc); }
+
+</style>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker>
+    <marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="head-agent" d="M0,0 L10,5 L0,10 z"/></marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="900"/>
+
+  <!-- Title -->
+  <text class="t-title" x="40" y="74">circuitAnt</text>
+  <text class="t-sub" x="40" y="104">Ask questions about a gate-level netlist in plain English. An LLM agent answers by running tools on OpenROAD's database.</text>
+
+  <!-- Layer eyebrows -->
+  <text class="t-eyebrow" x="40" y="138">INTERFACE</text>
+  <text class="t-eyebrow" x="350" y="138">REASONING</text>
+  <text class="t-eyebrow" x="700" y="138">TOOL LAYER</text>
+  <text class="t-eyebrow" x="1120" y="138">EDA ENGINE</text>
+
+  <!-- ============ Column A: designer ============ -->
+  <rect class="card" x="40" y="150" width="250" height="290" rx="10"/>
+  <text class="t-h-sm" x="60" y="180">Designer request</text>
+  <rect class="bubble" x="60" y="196" width="210" height="140" rx="10"/>
+  <path class="bubble" d="M92,336 L84,352 L110,336" />
+  <text class="t-quote" x="76" y="226">“Reduce the maximum</text>
+  <text class="t-quote" x="76" y="248">logic depth, then check</text>
+  <text class="t-quote" x="76" y="270">that the design is still</text>
+  <text class="t-quote" x="76" y="292">equivalent.”</text>
+  <text class="t-small" x="76" y="320">one request per line of prompt.txt</text>
+  <rect class="file" x="60" y="366" width="210" height="56" rx="6"/>
+  <text class="t-mono-b" x="76" y="390">test001.v</text>
+  <text class="t-small" x="76" y="410">gate-level Verilog netlist</text>
+
+  <rect class="card" x="40" y="480" width="250" height="220" rx="10"/>
+  <text class="t-h-sm" x="60" y="510">Answer</text>
+  <rect class="term" x="60" y="524" width="210" height="96" rx="6"/>
+  <text class="t-term" x="74" y="550">#RESPONSE 2</text>
+  <text class="t-term" x="74" y="572">Max depth reduced.</text>
+  <text class="t-term" x="74" y="594">Equivalent: yes</text>
+  <rect class="file" x="60" y="634" width="210" height="50" rx="6"/>
+  <text class="t-mono-b" x="76" y="656">test001_out.v</text>
+  <text class="t-small" x="76" y="674">modified netlist, written back</text>
+
+  <!-- ============ Column B: LLM + agent ============ -->
+  <rect class="c-agent" x="350" y="150" width="290" height="110" rx="10"/>
+  <text class="t-h" x="370" y="184">LLM</text>
+  <text class="t-mono" x="370" y="208">gpt-4o-mini</text>
+  <text class="t-small" x="370" y="232">reads the tool schemas and</text>
+  <text class="t-small" x="370" y="248">decides which tool to call</text>
+
+  <rect class="c-agent" x="350" y="320" width="290" height="380" rx="10"/>
+  <text class="t-h" x="370" y="354">Agent loop</text>
+  <text class="t-mono" x="370" y="376">agent.py</text>
+
+  <rect class="pill" x="370" y="398" width="220" height="38" rx="19"/>
+  <text class="t-body" x="480" y="422" text-anchor="middle">Request + history summary</text>
+  <rect class="pill" x="370" y="456" width="220" height="38" rx="19"/>
+  <text class="t-body" x="480" y="480" text-anchor="middle">Model picks a tool</text>
+  <rect class="pill" x="370" y="514" width="220" height="38" rx="19"/>
+  <text class="t-body" x="480" y="538" text-anchor="middle">Run tool, return result</text>
+  <rect class="pill" x="370" y="598" width="220" height="38" rx="19"/>
+  <text class="t-body" x="480" y="622" text-anchor="middle">Final answer</text>
+
+  <path class="loop" d="M480,436 V452" marker-end="url(#ah-a)"/>
+  <path class="loop" d="M480,494 V510" marker-end="url(#ah-a)"/>
+  <path class="loop" d="M590,533 H614 V475 H594" marker-end="url(#ah-a)"/>
+  <text class="t-wire" x="631" y="504" transform="rotate(-90 631 504)" text-anchor="middle">repeat</text>
+  <path class="loop" d="M480,552 V594" marker-end="url(#ah-a)"/>
+  <text class="t-wire" x="490" y="578">when no more calls</text>
+  <text class="t-small" x="370" y="672">developer mode: per-request logs</text>
+  <text class="t-small" x="370" y="688">and a tool-call CSV</text>
+
+  <!-- ============ Column C: tool API ============ -->
+  <rect class="c-tool" x="700" y="150" width="360" height="550" rx="10"/>
+  <text class="t-h" x="720" y="184">Tool API</text>
+  <text class="t-small" x="720" y="206"><tspan class="t-mono" style="font-size:12px">tools.py</tspan>  ·  30 functions, JSON schema from each signature</text>
+
+  <text class="t-group" x="720" y="240">ANALYSIS</text>
+  <rect class="row" x="718" y="250" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="266">count_gates</text><text class="t-small" x="1030" y="266" text-anchor="end">gate inventory</text>
+  <rect class="row" x="718" y="276" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="292">get_max_depth</text><text class="t-small" x="1030" y="292" text-anchor="end">logic depth</text>
+  <rect class="row" x="718" y="302" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="318">get_cone</text><text class="t-small" x="1030" y="318" text-anchor="end">fan-in / fan-out cone</text>
+  <rect class="row" x="718" y="328" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="344">find_all_paths</text><text class="t-small" x="1030" y="344" text-anchor="end">input → output paths</text>
+  <rect class="row" x="718" y="354" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="370">derive_boolean_equation</text><text class="t-small" x="1030" y="370" text-anchor="end">logic function</text>
+
+  <text class="t-group" x="720" y="405">TRANSFORMATION</text>
+  <rect class="row-hi" x="718" y="415" width="324" height="22" rx="4"/>
+  <text class="t-mono-b" x="730" y="431">reduce_depth</text><text class="t-small" x="1030" y="431" text-anchor="end">ABC resynthesis</text>
+  <rect class="row" x="718" y="441" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="457">insert_buffers_for_fanout</text><text class="t-small" x="1030" y="457" text-anchor="end">fanout limit</text>
+  <rect class="row" x="718" y="467" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="483">replace_gate_type</text><text class="t-small" x="1030" y="483" text-anchor="end">e.g. XOR → NAND</text>
+  <rect class="row" x="718" y="493" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="509">collapse_inverter_pairs</text><text class="t-small" x="1030" y="509" text-anchor="end">NOT-NOT</text>
+  <rect class="row" x="718" y="519" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="535">remove_dangling_gates</text><text class="t-small" x="1030" y="535" text-anchor="end">dead logic</text>
+
+  <text class="t-group" x="720" y="570">VERIFICATION</text>
+  <rect class="row-hi" x="718" y="580" width="324" height="22" rx="4"/>
+  <text class="t-mono-b" x="730" y="596">check_equivalence</text><text class="t-small" x="1030" y="596" text-anchor="end">whole design</text>
+  <rect class="row" x="718" y="606" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="622">check_signal_equivalence</text><text class="t-small" x="1030" y="622" text-anchor="end">two signals</text>
+  <rect class="row" x="718" y="632" width="324" height="22" rx="4"/>
+  <text class="t-mono" x="730" y="648">check_symmetry</text><text class="t-small" x="1030" y="648" text-anchor="end">swappable inputs</text>
+
+  <text class="t-small" x="720" y="682">+ read / write design, fanout, cut points, renaming …</text>
+
+  <!-- ============ Column D: OpenROAD + ABC ============ -->
+  <rect class="c-eda" x="1120" y="150" width="440" height="410" rx="10"/>
+  <text class="t-h" x="1140" y="184">OpenROAD</text>
+  <text class="t-small" x="1540" y="184" text-anchor="end">embedded Python · ./circuitant</text>
+
+  <rect class="c-eda-in" x="1140" y="200" width="400" height="74" rx="8"/>
+  <text class="t-h-sm" x="1158" y="226">Netlist reader / writer</text>
+  <text class="t-small" x="1158" y="246">loads any gate-level Verilog: ICCAD primitives or a</text>
+  <text class="t-small" x="1158" y="262">standard-cell library given as LEF + Liberty</text>
+
+  <path class="wire-soft" d="M1340,274 V294" marker-end="url(#ah)"/>
+
+  <rect class="c-eda-in" x="1140" y="298" width="400" height="244" rx="8"/>
+  <text class="t-h" x="1158" y="328">OpenDB</text>
+  <text class="t-small" x="1158" y="348">the loaded netlist, held as a database</text>
+
+  <rect class="chip" x="1158" y="364" width="176" height="52" rx="6"/>
+  <text class="t-mono-b" x="1172" y="386">dbInst</text><text class="t-small" x="1172" y="404">gates</text>
+  <rect class="chip" x="1346" y="364" width="176" height="52" rx="6"/>
+  <text class="t-mono-b" x="1360" y="386">dbNet</text><text class="t-small" x="1360" y="404">wires</text>
+  <rect class="chip" x="1158" y="426" width="176" height="52" rx="6"/>
+  <text class="t-mono-b" x="1172" y="448">dbITerm</text><text class="t-small" x="1172" y="466">gate pins</text>
+  <rect class="chip" x="1346" y="426" width="176" height="52" rx="6"/>
+  <text class="t-mono-b" x="1360" y="448">dbBTerm</text><text class="t-small" x="1360" y="466">primary I/O ports</text>
+  <text class="t-small" x="1158" y="504">Cell behaviour comes from Liberty functions and</text>
+  <text class="t-small" x="1158" y="520">LEF pins, never from cell names.</text>
+
+  <rect class="c-abc" x="1120" y="600" width="440" height="100" rx="10"/>
+  <text class="t-h" x="1140" y="634">ABC</text>
+  <text class="t-body" x="1140" y="658">logic resynthesis  ·  combinational equivalence (cec)</text>
+  <text class="t-small" x="1140" y="680">used by reduce_depth and the check_* tools</text>
+
+  <!-- ============ Wires ============ -->
+  <!-- 1: request into agent -->
+  <path class="wire" d="M290,300 H320 V417 H366" marker-end="url(#ah)"/>
+  <!-- 6: answer back -->
+  <path class="wire" d="M370,617 H294" marker-end="url(#ah)"/>
+  <!-- 2: agent <-> LLM -->
+  <path class="wire" d="M462,320 V264" marker-end="url(#ah)"/>
+  <path class="wire" d="M528,260 V316" marker-end="url(#ah)"/>
+  <text class="t-wire" x="452" y="295" text-anchor="end">context</text>
+  <text class="t-wire" x="538" y="295">tool choice</text>
+  <!-- 3: agent <-> tools -->
+  <path class="wire" d="M640,470 H696" marker-end="url(#ah)"/>
+  <path class="wire" d="M700,540 H644" marker-end="url(#ah)"/>
+  <text class="t-wire" x="670" y="560" text-anchor="middle">result</text>
+  <!-- 4: tools <-> OpenDB -->
+  <path class="wire" d="M1060,400 H1136" marker-end="url(#ah)"/>
+  <path class="wire" d="M1140,460 H1064" marker-end="url(#ah)"/>
+  <text class="t-wire" x="1090" y="372" text-anchor="middle">query</text>
+  <text class="t-wire" x="1090" y="388" text-anchor="middle">edit</text>
+  <text class="t-wire" x="1100" y="478" text-anchor="middle">data</text>
+  <!-- 5: OpenDB <-> ABC -->
+  <path class="wire" d="M1300,542 V596" marker-end="url(#ah)"/>
+  <path class="wire" d="M1380,600 V546" marker-end="url(#ah)"/>
+  <text class="t-wire" x="1394" y="576">BLIF</text>
+
+  <!-- Badges on wires -->
+  <g>
+    <circle class="badge" cx="320" cy="360" r="13"/><text class="badge-t" x="320" y="365" text-anchor="middle">1</text>
+    <circle class="badge" cx="495" cy="290" r="13"/><text class="badge-t" x="495" y="295" text-anchor="middle">2</text>
+    <circle class="badge" cx="668" cy="470" r="13"/><text class="badge-t" x="668" y="475" text-anchor="middle">3</text>
+    <circle class="badge" cx="1100" cy="430" r="13"/><text class="badge-t" x="1100" y="435" text-anchor="middle">4</text>
+    <circle class="badge" cx="1340" cy="572" r="13"/><text class="badge-t" x="1340" y="577" text-anchor="middle">5</text>
+    <circle class="badge" cx="330" cy="617" r="13"/><text class="badge-t" x="330" y="622" text-anchor="middle">6</text>
+  </g>
+
+  <!-- ============ Bottom trace ============ -->
+  <line class="rule" x1="40" y1="738" x2="1560" y2="738"/>
+  <text class="t-eyebrow" x="40" y="768">ONE REQUEST, END TO END</text>
+
+  <g transform="translate(40,786)">
+    <circle class="badge" cx="13" cy="13" r="13"/><text class="badge-t" x="13" y="18" text-anchor="middle">1</text>
+    <text class="t-h-sm" x="36" y="19">Ask</text>
+    <text class="t-small" x="36" y="44">The designer types a request.</text>
+    <text class="t-small" x="36" y="62">The netlist is loaded into OpenDB.</text>
+  </g>
+  <g transform="translate(293,786)">
+    <circle class="badge" cx="13" cy="13" r="13"/><text class="badge-t" x="13" y="18" text-anchor="middle">2</text>
+    <text class="t-h-sm" x="36" y="19">Plan</text>
+    <text class="t-small" x="36" y="44">The LLM reads the tool schemas</text>
+    <text class="t-small" x="36" y="62">and picks reduce_depth.</text>
+  </g>
+  <g transform="translate(546,786)">
+    <circle class="badge" cx="13" cy="13" r="13"/><text class="badge-t" x="13" y="18" text-anchor="middle">3</text>
+    <text class="t-h-sm" x="36" y="19">Call</text>
+    <text class="t-small" x="36" y="44">agent.py runs the tool inside</text>
+    <text class="t-small" x="36" y="62">OpenROAD's Python.</text>
+  </g>
+  <g transform="translate(799,786)">
+    <circle class="badge" cx="13" cy="13" r="13"/><text class="badge-t" x="13" y="18" text-anchor="middle">4</text>
+    <text class="t-h-sm" x="36" y="19">Edit</text>
+    <text class="t-small" x="36" y="44">The tool queries and rewrites</text>
+    <text class="t-small" x="36" y="62">gates and nets in OpenDB.</text>
+  </g>
+  <g transform="translate(1052,786)">
+    <circle class="badge" cx="13" cy="13" r="13"/><text class="badge-t" x="13" y="18" text-anchor="middle">5</text>
+    <text class="t-h-sm" x="36" y="19">Resynthesize &amp; prove</text>
+    <text class="t-small" x="36" y="44">ABC restructures the logic, then</text>
+    <text class="t-small" x="36" y="62">check_equivalence runs cec.</text>
+  </g>
+  <g transform="translate(1305,786)">
+    <circle class="badge" cx="13" cy="13" r="13"/><text class="badge-t" x="13" y="18" text-anchor="middle">6</text>
+    <text class="t-h-sm" x="36" y="19">Answer</text>
+    <text class="t-small" x="36" y="44">A #RESPONSE block, plus the</text>
+    <text class="t-small" x="36" y="62">netlist written back as Verilog.</text>
+  </g>
+</svg>

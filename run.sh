@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run every testcase in a folder (as cada1067's run.sh does):
+# Run every testcase in a folder:
 #
 #   circuitAnt/run.sh testcase              folder relative to the current directory or circuitAnt/
 #   circuitAnt/run.sh /full/path/testcase

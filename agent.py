@@ -16,7 +16,7 @@ MAX_TOOL_ROUNDS = 20
 MAX_RESULT_CHARS = 20000
 CONTEXT_HISTORY_LIMIT = 20  # earlier requests summarised into each new request
 
-# Context handling (history summary between requests) follows cada1067 (src/agent.py).
+# Context handling: each request sees a history summary of the earlier requests.
 SYSTEM_PROMPT = (
     "You are an expert EDA assistant. You analyse and transform a gate-level Verilog netlist "
     "through the tools provided. Requests arrive one at a time; for each, call the tools it needs, "
@@ -34,7 +34,7 @@ SYSTEM_PROMPT = (
 
 
 class Agent:
-    """Answers one request at a time, as in cada1067.
+    """Answers one request at a time.
 
     Each request starts a fresh conversation: [system prompt, "Current state:
     <summary of earlier requests>", request].  After it, the request and its tool
@@ -146,7 +146,7 @@ class Agent:
         return "[ERROR] too many tool calls without an answer"
 
     def _run(self, call) -> str:
-        """JSON {"result": ...} or {"error": ...}, as in cada1067."""
+        """JSON {"result": ...} or {"error": ...}."""
         try:
             value = self.functions[call.name](**json.loads(call.arguments or "{}"))
             if isinstance(value, dict) and value.get("file_path"):  # a full list written to a file:
@@ -161,7 +161,7 @@ class Agent:
 
 
 def _summarize(tool_name: str, result_str: str) -> str:
-    """One-line history entry for a tool result (cada1067's wording)."""
+    """One-line history entry for a tool result."""
     try:
         result = json.loads(result_str)
     except json.JSONDecodeError:

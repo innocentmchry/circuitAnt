@@ -11,7 +11,7 @@ name is set):
 
 Settings come from the YAML config (see config.yaml).  With developer mode on,
 each request is logged to circuitAnt/debugging/logs/<run>/<case>_request_<n>_<time>.log,
-in the same format as cada1067, and the tools each request called are recorded
+and the tools each request called are recorded
 in circuitAnt/debugging/run_analysis_<run>.csv.
 
 stdout carries only the #RESPONSE blocks: everything else written to it

@@ -55,7 +55,7 @@ def find_duplicates(d: Design, inline_limit: int | None = 10, out_dir: str | Pat
 def find_enable_hold(d: Design, near: int = 6, inline_limit: int | None = 10, out_dir: str | Path = ".") -> dict:
     """Flip-flops with enable or hold structures in their D input logic.
 
-    Port of cada1067's structural heuristic.  A flop matches when its D depends on its
+    A structural heuristic: a flop matches when its D depends on its
     own output (Q, or QN = inverted Q) through combinational logic and either
       * D is Q through only BUF/NOT (even inversions; odd from QN) -> "direct_hold", or
       * a gate, searched breadth-first back from D, joins a branch with Q within

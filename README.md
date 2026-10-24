@@ -28,7 +28,7 @@ How to change or extend the code, and the rules it follows: [DEVELOPING.md](DEVE
 ```
 circuitAnt/
 ├── circuitant              executable: runs main.py inside OpenROAD's Python
-├── run.sh                  runs every testcase in a folder (like cada1067's run.sh)
+├── run.sh                  runs every testcase in a folder
 ├── openroad_python.sh      runs any Python script inside OpenROAD (test automation, scripts)
 ├── config.yaml             model, API key file, output folder, netlist format, developer mode
 ├── .env                    the OpenAI API key (never commit or share it)
@@ -200,7 +200,7 @@ it prints `OK` or the failing tests, and leaves no files behind.
 
 | Covers | How |
 |---|---|
-| Analysis: counts, depth, paths, cones, fanout, ports, patterns, equations | expected values, several from cada1067's engine on ICCAD test10 |
+| Analysis: counts, depth, paths, cones, fanout, ports, patterns, equations | expected values, several cross-checked with an independent implementation on ICCAD test10 |
 | Verification: equivalence, signal equivalence, symmetry | equivalent rewrites must PASS; deliberately broken designs must FAIL, with the right failing outputs |
 | Transformations and resynthesis | each result checked for its purpose, then `check_equivalence` must PASS and the written netlist must read back |
 | Reading and libraries | ICCAD pin order and flip-flop linking; the generic reader on Nangate45 (top module, ports, cell classification, escaped names, multi-output cells) |

@@ -1,6 +1,6 @@
 """Functional equivalence of the current design with the netlist it was loaded from.
 
-Checked at sequential-cell boundaries (the same convention as cada1067): both
+Checked at sequential-cell boundaries: both
 designs must have the same ports and the same sequential cells (by instance name);
 each cell's output pins are then free inputs and its input pins are outputs, so
 the question is purely combinational.  Proof: both designs written as BLIF with

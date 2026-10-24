@@ -42,8 +42,8 @@ to every request. Recovery from tool errors is deliberately not in the prompt
   live in `tests_automation/`).
 * For a transformation, the test must also check `check_equivalence` is PASS and
   that the written netlist reads back.
-* Before trusting a new result, check it independently: against cada1067's engine
-  (`cada1067/src/eda_engine.py`), with a random simulation, with a theoretical
+* Before trusting a new result, check it independently: against an independent
+  implementation, with a random simulation, with a theoretical
   bound (e.g. the minimum buffer count), and with a **negative control** — a
   deliberately broken design must be reported as broken.
 
