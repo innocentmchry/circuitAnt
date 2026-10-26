@@ -5,7 +5,8 @@ format_netlist() prints a short summary of the OpenDB design, not a full dump.
 Only used when ``developer: mode: true`` in config.yaml.  When the flag is
 off, ``NoopLogger`` is used instead (zero runtime overhead).  In developer mode
 RunAnalysis also records which tools each request actually called, in
-debugging/run_analysis_<run id>.csv (the run id of the log folder, logs/<run id>/).
+debugging/run_analysis_<run id>.csv (the run id of the log folder, logs/<run id>/),
+and write_run_info() the settings the run used, in debugging/run_info_<run id>.json.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import csv
 import json
 import os
 import re
+import subprocess
 import textwrap
 import time
 from datetime import datetime, timezone
@@ -215,19 +217,17 @@ class ConversationLogger:
         """Log the LLM's response — raw JSON first, then summary.
         
         Args:
-            response: The OpenAI API response object.
+            response: The model's reply (llm.Reply).
             turn: Turn number within this request.
             elapsed: Seconds this LLM call took (wall-clock).
         """
-        choice = response.choices[0]
-        msg = choice.message
-        finish = choice.finish_reason or "?"
+        msg = response
+        finish = response.finish_reason
 
         self._fh.write(f"┌─ LLM RESPONSE (turn {turn}) ─────────────\n")
         self._fh.write("│ RAW JSON:\n")
         try:
-            raw_dict = response.model_dump(mode="json")
-            raw_str = json.dumps(raw_dict, indent=6, ensure_ascii=False)
+            raw_str = json.dumps(response.raw, indent=6, ensure_ascii=False)
         except (AttributeError, TypeError):
             raw_str = str(response)
         for line in raw_str.splitlines():
@@ -243,17 +243,15 @@ class ConversationLogger:
         if msg.tool_calls:
             self._fh.write(f"│   tool_calls: {len(msg.tool_calls)}\n")
             for tc in msg.tool_calls:
-                fn = tc.function
-                self._fh.write(f"│     → {fn.name}\n")
-                self._fh.write(f"│       args: {fn.arguments}\n")
+                self._fh.write(f"│     → {tc.name}\n")
+                self._fh.write(f"│       args: {tc.arguments}\n")
 
-        usage = getattr(response, "usage", None)
-        if usage:
-            self._fh.write(
-                f"│   tokens: prompt={usage.prompt_tokens}  "
-                f"completion={usage.completion_tokens}  "
-                f"total={usage.total_tokens}\n"
-            )
+        self._fh.write(
+            f"│   tokens: prompt={response.prompt_tokens} (cached={response.cached_tokens}"
+            f"  cache_write={response.cache_write_tokens})  "
+            f"completion={response.completion_tokens}  "
+            f"total={response.prompt_tokens + response.completion_tokens}\n"
+        )
 
         if elapsed > 0:
             self._fh.write(f"│   elapsed: {elapsed:.2f}s\n")
@@ -280,11 +278,35 @@ class ConversationLogger:
             self._fh.write(f"  {line}\n")
         self._fh.write("  ────────────────────\n\n")
 
+    def log_tools_offered(self, names: List[str]) -> None:
+        """The tools the model can call in this request (as offered with every LLM call)."""
+        self._fh.write(f"  ── TOOLS OFFERED ({len(names)}) ──\n  {', '.join(names)}\n\n")
+
+    def log_trace(self, lines: List[str]) -> None:
+        """What happened, one line per LLM call: the tool calls (and what they ran) or the answer."""
+        self._fh.write("┌─ TRACE (one line per LLM call) ──────────\n")
+        for line in lines:
+            self._fh.write(f"│ {line}\n")
+        self._fh.write("└──────────────────────────────────────────\n\n")
+
     def log_final_response(self, text: str) -> None:
         """Log the final text response returned to the user."""
         self._fh.write("┌─ FINAL RESPONSE ─────────────────────────\n")
         for line in text.splitlines():
             self._fh.write(f"│ {line}\n")
+        self._fh.write("└──────────────────────────────────────────\n\n")
+
+    def log_usage(self, usage: Any, costs: Any = None) -> None:
+        """Log the request's model usage, summed over its LLM calls (llm.Usage), and
+        (list, billed) cost in USD when prices are set."""
+        self._fh.write("┌─ REQUEST USAGE (all LLM calls) ──────────\n")
+        self._fh.write(f"│ llm_calls: {usage.llm_calls}\n")
+        self._fh.write(f"│ input_tokens: {usage.input_tokens} (cached={usage.cached_input_tokens}"
+                       f"  cache_write={usage.cache_write_tokens})\n")
+        self._fh.write(f"│ output_tokens: {usage.output_tokens}\n")
+        self._fh.write(f"│ chars: input={usage.input_chars}  output={usage.output_chars}\n")
+        if costs:
+            self._fh.write(f"│ cost_usd: list={costs[0]:.6f}  billed={costs[1]:.6f}\n")
         self._fh.write("└──────────────────────────────────────────\n\n")
 
     def close(self) -> None:
@@ -331,6 +353,15 @@ class NoopLogger:
     def log_final_response(self, text: str) -> None:
         pass
 
+    def log_tools_offered(self, names: List[str]) -> None:
+        pass
+
+    def log_trace(self, lines: List[str]) -> None:
+        pass
+
+    def log_usage(self, usage: Any, costs: Any = None) -> None:
+        pass
+
     def close(self) -> None:
         pass
 
@@ -347,32 +378,71 @@ class NoopLogger:
 
 class RunAnalysis:
     """run_analysis_<run id>.csv: for every request, the tools the agent actually called
-    (columns as predicted_run_analysis.csv, plus the arguments).  One file per run --
-    run.sh's testcases share one -- next to this file.  Several calls in one request are
-    joined with " ; " in call order; no call at all is "(history)".  A testcase run
-    again in the same run replaces its earlier rows; rows stay grouped by testcase, in
-    prompt order."""
+    (columns as predicted_run_analysis.csv, plus the arguments), how long the request took
+    and the model usage summed over its LLM calls (see llm.Usage).  The cost columns exist
+    only when prices are set in the config.  One file per run -- run.sh's testcases share
+    one -- next to this file.  Several calls in one request are joined with " ; " in call
+    order; no call at all is "(history)".  A testcase run again in the same run replaces its
+    earlier rows; rows stay grouped by testcase, in prompt order."""
 
-    COLUMNS = ["testcase_number", "prompt", "tool_called", "tool_input_structure"]
+    COLUMNS = ["testcase_number", "prompt", "tool_called", "tool_input_structure", "graph_ops",
+               "llm_calls", "seconds", "input_tokens", "cached_input_tokens", "output_tokens",
+               "input_chars", "output_chars"]
+    COST_COLUMNS = ["cost_list_usd", "cost_billed_usd"]
 
-    def __init__(self, run_id: str) -> None:
+    def __init__(self, run_id: str, costs: bool = False) -> None:
+        """costs: write the cost columns (prices are set in the config)."""
         self.path = Path(__file__).resolve().parent / f"run_analysis_{run_id}.csv"
+        self.columns = self.COLUMNS + (self.COST_COLUMNS if costs else [])
         self.started: set = set()  # testcases begun in this run
 
-    def record(self, case: str, prompt: str, calls: List[tuple]) -> None:
-        """calls: [(tool name, {argument: value})] in the order they were made."""
+    def record(self, case: str, prompt: str, calls: List[tuple], usage: Any, costs: Any = None,
+               ops: List[tuple] = (), seconds: float = 0.0) -> None:
+        """calls: [(tool name, {argument: value})] of the engine tools, in the order they were made;
+        usage: llm.Usage; costs: (list, billed) USD or None; ops: the other tool calls, as calls
+        (e.g. tool knowledge graph navigation; none in access mode "all"); seconds: wall-clock
+        time from the request to its answer (LLM calls and tools)."""
         rows = []
-        if self.path.exists():
+        if self.path.exists():  # by column name, so a file written with other columns still merges
             with open(self.path, newline="") as fh:
-                rows = list(csv.reader(fh))[1:]
+                rows = list(csv.DictReader(fh))
         if case not in self.started:  # a new run of this testcase: drop its old rows
-            rows = [r for r in rows if r[0] != case]
+            rows = [r for r in rows if r["testcase_number"] != case]
             self.started.add(case)
         args = lambda a: ", ".join(f"{k}={v!r}".replace("'", '"') for k, v in a.items())
-        rows.append([case, prompt, " ; ".join(name for name, _ in calls) or "(history)",
-                     " ; ".join(f"{name}({args(a)})" for name, a in calls)])
-        rows.sort(key=lambda r: r[0])  # stable: prompt order within a testcase
+        row = {"testcase_number": case, "prompt": prompt,
+               "tool_called": " ; ".join(name for name, _ in calls) or "(history)",
+               "tool_input_structure": " ; ".join(f"{name}({args(a)})" for name, a in calls),
+               "graph_ops": " ; ".join(f"{name}({args(a)})" for name, a in ops),
+               "llm_calls": usage.llm_calls, "seconds": f"{seconds:.2f}",
+               "input_tokens": usage.input_tokens, "cached_input_tokens": usage.cached_input_tokens,
+               "output_tokens": usage.output_tokens, "input_chars": usage.input_chars,
+               "output_chars": usage.output_chars}
+        if costs:
+            row.update(cost_list_usd=f"{costs[0]:.6f}", cost_billed_usd=f"{costs[1]:.6f}")
+        rows.append(row)
+        rows.sort(key=lambda r: r["testcase_number"])  # stable: prompt order within a testcase
         with open(self.path, "w", newline="") as fh:
-            writer = csv.writer(fh, quoting=csv.QUOTE_ALL)
-            writer.writerow(self.COLUMNS)
+            writer = csv.DictWriter(fh, self.columns, quoting=csv.QUOTE_ALL, extrasaction="ignore", restval="")
+            writer.writeheader()
             writer.writerows(rows)
+
+
+# ---------------------------------------------------------------------------
+# The settings of a run
+# ---------------------------------------------------------------------------
+
+def write_run_info(run_id: str, info: Dict[str, Any]) -> Path:
+    """debugging/run_info_<run id>.json: the settings a run used (info) and the source version
+    (git commit; dirty = uncommitted changes), so a run's CSV and logs can be traced to them.
+    Written by the run's first process; run.sh's testcases share one run id."""
+    path = Path(__file__).resolve().parent / f"run_info_{run_id}.json"
+    if path.exists():
+        return path
+    git = lambda *args: subprocess.run(["git", *args], capture_output=True, text=True,
+                                       cwd=Path(__file__).resolve().parent).stdout.strip()
+    info = {"run": run_id, "started": datetime.now().isoformat(timespec="seconds"),
+            "git_commit": git("rev-parse", "HEAD") or None, "git_dirty": bool(git("status", "--porcelain")),
+            **info}
+    path.write_text(json.dumps(info, indent=2) + "\n")
+    return path

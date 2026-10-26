@@ -1,19 +1,19 @@
 """LLM agent: natural-language requests -> engine tool calls -> answer.
 
-The tools the model can call, and their generated schemas, are in tools.py.
+The tools the model can call, and their generated schemas, are in tools.py; which of
+them it is offered, and how, is the access mode (tool_access/).  All in this package.
 """
-import inspect
 import json
 import time
 from pathlib import Path
 
-from openai import OpenAI
-
+from agent.llm import PROVIDERS, Usage, message_chars
 from debugging.developer import ConversationLogger, NoopLogger, RunAnalysis, extract_case_name, run_logs_dir
-from tools import Tools, schema
+from agent.tool_access import make_access
+from agent.tools import Tools, changes_design
 
 MAX_TOOL_ROUNDS = 20
-MAX_RESULT_CHARS = 20000
+MAX_STUCK_TURNS = 3  # consecutive LLM calls whose tool calls all fail (refused or error) before a request stops
 CONTEXT_HISTORY_LIMIT = 20  # earlier requests summarised into each new request
 
 # Context handling: each request sees a history summary of the earlier requests.
@@ -42,16 +42,19 @@ class Agent:
     """
 
     def __init__(self, api_key: str, model: str, developer: dict | None = None,
-                 design: dict | None = None, output_dir: str | Path = ".") -> None:
-        """developer: the config's `developer` section ({"mode": bool, "log_dir": path});
+                 design: dict | None = None, output_dir: str | Path = ".", provider: str = "openai",
+                 cache: bool = True, price: dict | None = None, access: dict | None = None) -> None:
+        """provider: "openai" or "claude" (see llm.py); cache: use the provider's prompt cache;
+        price: USD per 1M tokens (see llm.Usage.costs), for the cost columns of the run analysis;
+        access: the config's `tools` section (how the model reaches the tools, see tool_access);
+        developer: the config's `developer` section ({"mode": bool, "log_dir": path});
         design: its `design` section (how netlists are read, see design_io.read_design);
         output_dir: where testcase logs, written designs and result lists go."""
-        self.client = OpenAI(api_key=api_key)
+        self.client = PROVIDERS[provider](api_key, model, cache)
+        self.price = price
         self.model = model
         self.tools = Tools(design, output_dir)
-        self.functions = {name: fn for name, fn in inspect.getmembers(self.tools, inspect.ismethod)
-                          if not name.startswith("_")}
-        self.schemas = [schema(fn) for fn in self.functions.values()]
+        self.access = make_access(access, self.tools)
         self.requests = 0
         self.case = ""
         self.history = []  # one line per earlier request that called tools
@@ -62,7 +65,7 @@ class Agent:
         self.run_analysis = None  # in developer mode: the tools each request actually called
         if self.developer_mode:
             self.logs_dir = run_logs_dir(developer.get("log_dir"))
-            self.run_analysis = RunAnalysis(self.logs_dir.name)  # same run id as the log folder
+            self.run_analysis = RunAnalysis(self.logs_dir.name, costs=bool(price))  # run id of the log folder
             self.Logger = ConversationLogger
         else:
             self.logs_dir = Path(".")  # unused
@@ -108,56 +111,97 @@ class Agent:
             log.log_user_input(request)
             if context_summary and self.developer_mode:
                 log._fh.write(f"  ── CONTEXT ──\n  {context_summary}\n  ─────────────\n\n")
-            tool_summaries, calls = [], []
-            answer = self._answer(request, context_summary, tool_summaries, calls, log)
-            self._remember(request, tool_summaries)
-            if self.run_analysis:  # the testcase name is known once set_testcase_name has run
-                self.run_analysis.record(self.tools.case or self.case, request, calls)
-            log.log_final_response(answer)
-            return answer
+            tool_summaries, calls, ops, usage, trace = [], [], [], Usage(), []
+            started = time.monotonic()
+            try:
+                answer = self._answer(request, context_summary, tool_summaries, calls, ops, usage, log, trace)
+                self._remember(request, tool_summaries)
+                log.log_final_response(answer)
+                return answer
+            finally:  # a failed request still spent its tokens
+                log.log_trace(trace)
+                costs = usage.costs(self.price)
+                log.log_usage(usage, costs)
+                if self.run_analysis:  # the testcase name is known once set_testcase_name has run
+                    self.run_analysis.record(self.tools.case or self.case, request, calls, usage, costs, ops,
+                                             time.monotonic() - started)
 
-    def _answer(self, request: str, context_summary: str, tool_summaries: list[str], calls: list, log) -> str:
-        """The answer to one request; fills tool_summaries (history lines) and calls ((name, arguments))."""
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    def _answer(self, request: str, context_summary: str, tool_summaries: list[str], calls: list,
+                ops: list, usage: Usage, log, trace: list) -> str:
+        """The answer to one request; fills tool_summaries (history lines), calls ((name, arguments) of the
+        engine tools run), ops ((name, arguments) of the other tool calls, e.g. graph navigation), usage
+        (tokens and characters over all LLM calls) and trace (one line per LLM call, for the log).
+
+        A call identical to one already made in the request (same tool, same arguments) is refused --
+        unless the design changed since -- and after MAX_STUCK_TURNS consecutive LLM calls whose tool calls
+        all fail (repeats, refusals, errors) the request is stopped: models can otherwise loop until
+        MAX_TOOL_ROUNDS (seen: a new refused testcase name in every turn)."""
+        self.access.begin(self.requests, request)
+        offered = None  # the tool list of the previous LLM call, to log it when it changes
+        made, stuck = set(), 0  # (tool, arguments) of the calls made since the design last changed
+        messages = [{"role": "system", "content": SYSTEM_PROMPT + self.access.system_text}]
         if context_summary:
             messages.append({"role": "system", "content": f"Current state: {context_summary}"})
         messages.append({"role": "user", "content": request})
         for turn in range(1, MAX_TOOL_ROUNDS + 1):
             log.log_llm_prompt(messages, turn)
             start = time.monotonic()
-            response = self.client.chat.completions.create(
-                model=self.model, messages=messages, tools=self.schemas)
-            log.log_llm_response(response, turn, time.monotonic() - start)
-            reply = response.choices[0].message
-            messages.append(reply.model_dump(exclude_none=True))
+            tools = self.access.offered()  # may change within a request (graph: run_tool after describe)
+            if tools is not offered:
+                log.log_tools_offered([t["function"]["name"] for t in tools])
+                offered = tools
+            reply = self.client.complete(messages, tools)
+            usage.add(reply, len(json.dumps(tools)) + message_chars(messages))
+            log.log_llm_response(reply, turn, time.monotonic() - start)
+            messages.append(reply.message())
             if not reply.tool_calls:
-                return reply.content or ""
+                trace.append(f"turn {turn}: answer")
+                return reply.content
+            steps, progress = [], False
             for call in reply.tool_calls:
                 try:
-                    calls.append((call.function.name, json.loads(call.function.arguments or "{}")))
+                    args = json.loads(call.arguments or "{}")
                 except json.JSONDecodeError:
-                    calls.append((call.function.name, {"arguments": call.function.arguments}))
-                result = self._run(call.function)
-                log.log_tool_result(call.function.name, result)
-                tool_summaries.append(_summarize(call.function.name, result))
-                if call.function.name == "read_design" and '"error"' not in result:
-                    log.log_netlist(self.tools.design)
-                messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+                    args = {"arguments": call.arguments}
+                key = (call.name, json.dumps(args, sort_keys=True))
+                if key in made:
+                    result = json.dumps({"error": "already called in this request with the same arguments; its "
+                                                  "result is above -- use it instead of calling again"})
+                    log.log_tool_result(call.name, result)
+                    ops.append((f"{call.name} [repeat, refused]", args))
+                    steps.append(f"{call.name}: REPEAT, refused")
+                    messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+                    continue
+                outcome = self.access.execute(call.name, call.arguments)
+                log.log_tool_result(call.name, outcome.result)
+                status = "ERROR" if outcome.result.startswith('{"error"') else "ok"
+                progress |= status == "ok"
+                if outcome.ran:
+                    made.add(key)
+                steps.append(f"{call.name}({_short(args)}){outcome.label and ' -> ' + outcome.label}: {status}")
+                if outcome.engine_call:  # history and the run analysis record the engine tools run
+                    name = outcome.engine_call[0]
+                    calls.append(outcome.engine_call)
+                    tool_summaries.append(_summarize(name, outcome.result))
+                    if name == "read_design" and '"error"' not in outcome.result:
+                        log.log_netlist(self.tools.design)
+                    if changes_design(getattr(self.tools, name)):
+                        made.clear()  # the design changed: the same call may now give another result
+                else:
+                    ops.append((call.name, args))
+                messages.append({"role": "tool", "tool_call_id": call.id, "content": outcome.result})
+            trace.append(f"turn {turn}: " + "; ".join(steps))
+            stuck = 0 if progress else stuck + 1
+            if stuck >= MAX_STUCK_TURNS:
+                return (f"[ERROR] stopped: {MAX_STUCK_TURNS} LLM calls in a row whose tool calls were all refused "
+                        "or failed")
         return "[ERROR] too many tool calls without an answer"
 
-    def _run(self, call) -> str:
-        """JSON {"result": ...} or {"error": ...}."""
-        try:
-            value = self.functions[call.name](**json.loads(call.arguments or "{}"))
-            if isinstance(value, dict) and value.get("file_path"):  # a full list written to a file:
-                path = Path(value["file_path"])  # name it after the testcase and request, so it is unique
-                unique = path.with_name(f"{self.tools.case or 'design'}_r{self.requests:02d}_{path.name}")
-                path.replace(unique)
-                value["file_path"] = str(unique)
-            result = {"result": value}
-        except Exception as exc:  # report tool errors to the model, not the user
-            result = {"error": f"{type(exc).__name__}: {exc}"}
-        return json.dumps(result)[:MAX_RESULT_CHARS]
+
+def _short(args: dict) -> str:
+    """Arguments in one short line, for the trace."""
+    text = ", ".join(f"{k}={json.dumps(v)}" for k, v in args.items())
+    return text if len(text) <= 80 else text[:77] + "..."
 
 
 def _summarize(tool_name: str, result_str: str) -> str:

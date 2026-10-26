@@ -1,0 +1,173 @@
+# circuitAnt tool ontology: the vocabulary of the tool knowledge graph (classes and properties).
+#
+# Only the vocabulary is written here.  The facts (which tools exist, their categories and
+# parameters) are generated from agent/tools.py and the engine packages by build.py; hand-written
+# knowledge (concepts and their synonyms, which tool usually follows which) is in knowledge.ttl.
+#
+# Conventions, to keep queries simple: every node is named with rdfs:label and described with
+# ca:description; tools, parameters, kinds, keywords and categories are in the ct: namespace.
+
+@prefix ca:   <https://w3id.org/circuitant/ontology#> .  # placeholder: register at w3id.org or use the repo URL before publishing
+@prefix ct:   <https://w3id.org/circuitant/tools#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+ca: a owl:Ontology ;
+    rdfs:label "circuitAnt tool ontology" ;
+    owl:versionInfo "0.1 (draft)" .
+
+# --- Classes -------------------------------------------------------------------------------
+
+ca:Tool a owl:Class ;
+    rdfs:label "Tool" ;
+    rdfs:comment "A function the agent can call: one method of Tools in agent/tools.py." .
+
+ca:Category a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Category" ;
+    rdfs:comment "A group of tools.  Top level: Session, Analysis, Transformation, Verification (the engine packages); below them the topic of the engine file (Cones, Depth, Buffering, ...), linked with skos:broader." .
+
+ca:Parameter a owl:Class ;
+    rdfs:label "Parameter" ;
+    rdfs:comment "One argument of one tool." .
+
+ca:ValueKind a owl:Class ;
+    rdfs:label "Value kind" ;
+    rdfs:comment "A kind of argument value used by several tools (Signal, Gate, StartPoint, EndPoint, FanoutTarget, GateType, GateTypes, FilePath): defined once, shared by every parameter of that kind." .
+
+ca:Keyword a owl:Class ;
+    rdfs:label "Keyword" ;
+    rdfs:comment "A reserved argument value naming a class of design objects instead of one object, e.g. ANY_PI (all primary inputs)." .
+
+ca:Example a owl:Class ;
+    rdfs:label "Example" ;
+    rdfs:comment "A request a tool answers, with the argument values to use." .
+
+ca:Binding a owl:Class ;
+    rdfs:label "Binding" ;
+    rdfs:comment "One argument value of an Example." .
+
+ca:Alternative a owl:Class ;
+    rdfs:label "Alternative" ;
+    rdfs:comment "Another tool to use instead of this one, and when." .
+
+ca:Concept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Concept" ;
+    rdfs:comment "A term requests use (fanin cone, logic depth, critical path, ...), with its synonyms (skos:altLabel), linked to the tools that answer it." .
+
+# Design objects: what argument values refer to.  Not populated yet; they are the link to a
+# knowledge graph of the design itself (nets, gates, ports, flip-flops).
+ca:DesignObject a owl:Class ;
+    rdfs:label "Design object" .
+ca:Net a owl:Class ; rdfs:subClassOf ca:DesignObject ; rdfs:label "Net" .
+ca:GateInstance a owl:Class ; rdfs:subClassOf ca:DesignObject ; rdfs:label "Gate instance" .
+ca:Port a owl:Class ; rdfs:subClassOf ca:DesignObject ; rdfs:label "Port" .
+ca:FlipFlop a owl:Class ; rdfs:subClassOf ca:GateInstance ; rdfs:label "Flip-flop" .
+
+# --- Properties shared by all nodes --------------------------------------------------------
+# rdfs:label names a node (a tool's label is the name it is called by).
+
+ca:description a owl:DatatypeProperty ;
+    rdfs:label "description" ;
+    rdfs:comment "What the node is or does, in full (a tool: its docstring; a category: its engine file's docstring)." ;
+    rdfs:range xsd:string .
+
+# --- Tool --------------------------------------------------------------------------------
+
+ca:summary a owl:DatatypeProperty ;
+    rdfs:domain ca:Tool ; rdfs:range xsd:string ;
+    rdfs:comment "One-line summary: the first line of the docstring." .
+
+ca:inCategory a owl:ObjectProperty ;
+    rdfs:domain ca:Tool ; rdfs:range ca:Category ;
+    rdfs:comment "The most specific category (an engine file's topic, or Session); its skos:broader is the package." .
+
+ca:hasParameter a owl:ObjectProperty ;
+    rdfs:domain ca:Tool ; rdfs:range ca:Parameter .
+
+ca:hasExample a owl:ObjectProperty ;
+    rdfs:domain ca:Tool ; rdfs:range ca:Example .
+
+ca:hasAlternative a owl:ObjectProperty ;
+    rdfs:domain ca:Tool ; rdfs:range ca:Alternative .
+
+ca:confusableWith a owl:ObjectProperty, owl:SymmetricProperty ;
+    rdfs:domain ca:Tool ; rdfs:range ca:Tool ;
+    rdfs:comment "Easily mistaken for each other; stated in both directions (from the Alternatives)." .
+
+ca:followedBy a owl:ObjectProperty ;
+    rdfs:domain ca:Tool ; rdfs:range ca:Tool ;
+    rdfs:comment "Usually called next in a session (e.g. a transformation, then check_equivalence).  Hand-written." .
+
+ca:changesDesign a owl:DatatypeProperty ;
+    rdfs:domain ca:Tool ; rdfs:range xsd:boolean ;
+    rdfs:comment "Edits the loaded design (a transformation, or read_design); must not be repeated to retry." .
+
+ca:requiresDesign a owl:DatatypeProperty ;
+    rdfs:domain ca:Tool ; rdfs:range xsd:boolean ;
+    rdfs:comment "Needs a loaded design (read_design first)." .
+
+ca:engineFunction a owl:DatatypeProperty ;
+    rdfs:domain ca:Tool ; rdfs:range xsd:string ;
+    rdfs:comment "The engine function it calls, e.g. eda_engine.analysis.cones.get_cone (provenance)." .
+
+# --- Parameter -------------------------------------------------------------------------
+
+ca:position a owl:DatatypeProperty ;
+    rdfs:domain ca:Parameter ; rdfs:range xsd:integer ;
+    rdfs:comment "Order in the tool's signature, from 1." .
+
+ca:required a owl:DatatypeProperty ;
+    rdfs:domain ca:Parameter ; rdfs:range xsd:boolean .
+
+ca:default a owl:DatatypeProperty ;
+    rdfs:domain ca:Parameter ;
+    rdfs:comment "The value used when the argument is omitted (absent: none)." .
+
+ca:datatype a owl:ObjectProperty ;
+    rdfs:domain ca:Parameter ;
+    rdfs:comment "xsd:string, xsd:integer or xsd:boolean." .
+
+ca:ofKind a owl:ObjectProperty ;
+    rdfs:domain ca:Parameter ; rdfs:range ca:ValueKind .
+
+ca:allowedValue a owl:DatatypeProperty ;
+    rdfs:domain ca:Parameter ;
+    rdfs:comment "One of a fixed set of values (absent: any value of its datatype or kind)." .
+
+# --- ValueKind and Keyword -------------------------------------------------------------
+
+ca:hasKeyword a owl:ObjectProperty ;
+    rdfs:domain ca:ValueKind ; rdfs:range ca:Keyword .
+
+ca:denotes a owl:ObjectProperty ;
+    rdfs:domain ca:ValueKind ;
+    rdfs:comment "The class of design objects a value of this kind names (e.g. Signal -> ca:Net)." .
+
+# --- Example, Binding, Alternative -----------------------------------------------------
+
+ca:hasBinding a owl:ObjectProperty ;
+    rdfs:domain ca:Example ; rdfs:range ca:Binding .
+
+ca:forParameter a owl:ObjectProperty ;
+    rdfs:domain ca:Binding ; rdfs:range ca:Parameter .
+
+ca:value a owl:DatatypeProperty ;
+    rdfs:domain ca:Binding ;
+    rdfs:comment "The argument value (a placeholder such as X stands for a name from the request)." .
+
+ca:useTool a owl:ObjectProperty ;
+    rdfs:domain ca:Alternative ; rdfs:range ca:Tool .
+
+ca:when a owl:DatatypeProperty ;
+    rdfs:domain ca:Alternative ; rdfs:range xsd:string .
+
+# --- Concept ---------------------------------------------------------------------------
+
+ca:answeredBy a owl:ObjectProperty ;
+    rdfs:domain ca:Concept ; rdfs:range ca:Tool ;
+    rdfs:comment "A tool that answers requests about this concept.  Hand-written." .

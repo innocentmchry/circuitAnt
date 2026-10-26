@@ -15,8 +15,9 @@ How to change or extend the code, and the rules it follows: [DEVELOPING.md](DEVE
 * Each line of the prompt file is one request. The agent sends it to the model
   with a summary of the earlier requests; the model calls tools; the answer is
   printed as a `#RESPONSE n` block.
-* A tool is a method of `Tools` in `tools.py`; its JSON schema is generated from
-  the method's signature and docstring.
+* A tool is a method of `Tools` in `agent/tools.py`; what the model is told about it
+  (schema, or a tool knowledge graph) is generated from the method's signature,
+  docstring, parameter annotations (`Param`) and `@tool` examples.
 * The engine (`eda_engine/`) loads the netlist into OpenDB through OpenROAD and
   answers everything from it. Cells are understood from their libraries (LEF pins,
   Liberty functions), not from their names, so any standard-cell library works.
@@ -30,11 +31,16 @@ circuitAnt/
 ├── circuitant              executable: runs main.py inside OpenROAD's Python
 ├── run.sh                  runs every testcase in a folder
 ├── openroad_python.sh      runs any Python script inside OpenROAD (test automation, scripts)
-├── config.yaml             model, API key file, output folder, netlist format, developer mode
-├── .env                    the OpenAI API key (never commit or share it)
+├── config.yaml             model, API key file, tool access, output folder, netlist format, developer mode
+├── .env                    the API keys (never commit or share it)
 ├── main.py                 reads requests from stdin, prints responses, sets up logs
-├── agent.py                the LLM loop: system prompt, history summaries, tool calls
-├── tools.py                the tools offered to the model (one method each) + schema generator
+├── agent/                  the LLM side (eda_engine knows nothing about it)
+│   ├── agent.py            the LLM loop: system prompt, history summaries, tool calls
+│   ├── llm.py              the chat-model clients (OpenAI, Claude) behind one interface
+│   ├── tools.py            the tools offered to the model (one method each) + schema generator
+│   └── tool_access/        how the model reaches the tools (config tools.access)
+│       ├── direct.py       access "all": every tool schema with every LLM call
+│       └── graph/          the tool knowledge graph (RDF): ontology.ttl, knowledge.ttl, build.py
 ├── eda_engine/             the netlist engine (no LLM code)
 │   ├── design.py           Design: the loaded netlist (OpenDB block) + library cell table
 │   ├── design_io.py        read_design / write_design: dispatch by format
@@ -52,16 +58,18 @@ circuitAnt/
 │   ├── transformation/     edits: naming, cleanup, buffering, resynthesis
 │   └── verification/       proofs: whole-design equivalence, signal equivalence, symmetry
 ├── docs/                   architecture.dot -> architecture.png (the diagram above)
+├── experiments/            experiment scripts (e.g. dump_tool_schemas.py); outputs in results/ (not in git)
 ├── debugging/
 │   ├── developer.py        developer-mode logs and the per-run tool-call CSV
 │   ├── README.md           what the files here are (predicted CSV = expectation, not ground truth)
 │   ├── predicted_run_analysis.csv   which tool each testcase prompt is expected to need
 │   ├── run_analysis_<run>.csv       which tools each request actually called (developer mode)
+│   ├── run_info_<run>.json          the settings and git commit a run used (developer mode)
 │   └── logs/<run>/         one folder per run: openroad.log + per-request logs
 ├── output/                 testcase logs, written netlists, long result lists
 ├── testcase/               testcases: testcase/<case>/{prompt.txt, <case>.v}
 ├── examples/               Nangate45 netlists (Synopsys DC) for the generic format
-└── tests_automation/       test automation for the engine: test_engine.py + small test netlists
+└── tests_automation/       test automation (no LLM): test_engine.py + small test netlists, test_tool_graph.py
 ```
 
 ## Installation
@@ -81,7 +89,7 @@ git clone https://github.com/berkeley-abc/abc.git ~/abc && make -C ~/abc -j"$(np
 
 The scripts look for it at `~/abc/abc`; if yours is elsewhere, set `ABC_BIN` (step 4).
 
-**3. Python packages** ([requirements.txt](requirements.txt): `openai`, `pyyaml`). They must
+**3. Python packages** ([requirements.txt](requirements.txt): `openai`, `anthropic`, `rdflib`, `pyyaml`). They must
 go into the Python that OpenROAD embeds — the system Python 3, not a virtual
 environment or a uv/conda Python, which OpenROAD would not see:
 
@@ -110,17 +118,21 @@ locations above) and fail with `missing <path>` if OpenROAD is not found.
 
 ### Setting the API key
 
-Put your OpenAI API key in `circuitAnt/.env` — the file named by
-`openai: api_key_file` in `config.yaml` — as the **only** content of the file:
+Put your API keys in `circuitAnt/.env` — the file named by `api_key_file` in
+`config.yaml` — one `KEY="value"` per line:
 
 ```bash
-echo "sk-...your key..." > .env
+cat > .env <<'KEYS'
+OPENAI_API_KEY="sk-...your OpenAI key..."
+CLAUDE_API_KEY="sk-ant-...your Anthropic key..."
+KEYS
 chmod 600 .env          # readable only by you
 ```
 
-The whole file is read as the key, so write just the key, not `OPENAI_API_KEY=sk-...`.
-If that file doesn't exist, the key is taken from `openai: api_key` in `config.yaml` or
-from the `OPENAI_API_KEY` environment variable. Never commit or share `.env`.
+Only the key of the chosen `provider` is needed. A file holding just a bare key (the
+old format) still works as the OpenAI key. If the file has no key for the provider, it
+is taken from `<provider>.api_key` in `config.yaml`, or from the environment
+(`OPENAI_API_KEY`; `CLAUDE_API_KEY` or `ANTHROPIC_API_KEY`). Never commit or share `.env`.
 
 ## Configuration (`config.yaml`)
 
@@ -128,11 +140,17 @@ Relative paths are relative to `config.yaml`.
 
 | Key | Meaning |
 |---|---|
-| `openai.api_key_file`, `openai.model` | where the API key is read from; which chat model to use |
+| `provider` | `openai` or `claude`: which chat model answers the requests |
+| `api_key_file` | the file the API keys are read from |
+| `openai.model`, `claude.model` | the model used for each provider (e.g. `gpt-4o-mini`, `claude-haiku-4-5`) |
+| `claude.cache` | use Claude's prompt cache (default `true`; OpenAI caches on its own) |
+| `<provider>.price` | USD per 1M tokens (`input`, `cached_input`, `cache_write`, `output`), for the cost columns of the run analysis |
 | `output_dir` | where `<case>.log`, written netlists and long result lists go (default here `./output`); leave it out to write them to the current directory |
 | `design.format` | `iccad` (ICCAD gate-primitive netlists on the built-in cells) or `generic` |
 | `design.lef`, `design.liberty` | generic only: the netlist's LEF files (technology LEF first) and Liberty files |
-| `developer.mode` | `true`: per-request logs and the tool-call CSV are written |
+| `tools.access` | how the model reaches the tools: `all` = every tool schema with every LLM call; `graph` = the session tools directly, the others through the tool knowledge graph (see `agent/tool_access/`) |
+| `tools.graph.core`, `.catalog`, `.sparql`, `.search`, `.knowledge` | graph mode only: tools offered directly (default `[]`: every tool through the graph; e.g. the 3 session tools); catalog in the system prompt: `names` (default, one tool name per line) or `summaries` (each with its one-line summary); also offer read-only SPARQL (default false); `search`: the temporary keyword `search_tools`, keep off (default false; to be replaced by embedding search); include `knowledge.ttl` concepts and `followedBy` (default true) |
+| `developer.mode` | `true`: per-request logs, the tool-call CSV and the run's settings (`run_info_<run>.json`) are written |
 | `developer.log_dir` | optional: put `logs/<run>/` somewhere else than `debugging/` |
 
 A generic netlist must be **flattened** (a single module); that module is the
@@ -159,6 +177,22 @@ Each `<folder>/<case>/prompt.txt` is run. Prompts name their files as
 are printed; `run.sh` reports how many testcases ran and where outputs and logs
 went.
 
+**Compare tool access modes** (developer mode; one run at a time)
+
+```bash
+CIRCUITANT_CONFIG=experiments/configs/all.yaml   CIRCUITANT_RUN=all_r1   ./run.sh testcase
+CIRCUITANT_CONFIG=experiments/configs/graph.yaml CIRCUITANT_RUN=graph_r1 ./run.sh testcase   # every tool via the graph
+CIRCUITANT_CONFIG=experiments/configs/graph_session.yaml CIRCUITANT_RUN=session_r1 ./run.sh testcase   # ablation: session tools direct
+python3 experiments/compare_runs.py all_r1 graph_r1 --cases 51-100   # tool agreement, LLM calls, tokens, cost
+```
+
+`CIRCUITANT_CONFIG` picks another config (default `config.yaml`); `CIRCUITANT_RUN` names the
+run (its logs, `run_analysis_<run>.csv`, `run_info_<run>.json`). The two experiment configs
+differ from `config.yaml` only in `tools` and their output folder
+(`experiments/results/output_<mode>/`); keep them in step with it (provider, model, prices).
+`./openroad_python.sh experiments/search_recall.py` measures, without an LLM, how often the
+temporary keyword `search_tools` (off by default) ranks a prompt's expected tool near the top.
+
 **Run one prompt file, or type requests**
 
 ```bash
@@ -169,7 +203,9 @@ went.
 **Run the test automation** (no LLM, about 20 s)
 
 ```bash
-./openroad_python.sh tests_automation/test_engine.py
+./openroad_python.sh tests_automation/test_engine.py       # the engine
+./openroad_python.sh tests_automation/test_tool_graph.py   # the tool knowledge graph agrees with agent/tools.py
+./openroad_python.sh tests_automation/test_agent.py        # the agent loop's safeguards, with a scripted model
 ```
 
 **Use the engine from a Python script** (must run inside OpenROAD)
@@ -205,12 +241,21 @@ it prints `OK` or the failing tests, and leaves no files behind.
 | Transformations and resynthesis | each result checked for its purpose, then `check_equivalence` must PASS and the written netlist must read back |
 | Reading and libraries | ICCAD pin order and flip-flop linking; the generic reader on Nangate45 (top module, ports, cell classification, escaped names, multi-output cells) |
 
+`test_tool_graph.py` (16 tests) checks that the tool knowledge graph says what
+`agent/tools.py` says: every tool with its category, parameters, kinds, allowed values
+and examples, in agreement with the tool schemas; and that `knowledge.ttl` names only
+tools and kinds that exist, and reaches every tool from some concept; and that `@tool`
+examples use placeholders (X, A, g, ...), never netlist names, so they generalise.
+It also checks access mode `graph`: what the model is offered, the catalog, `describe`,
+`search_tools`, read-only `sparql`, and that `run_tool` runs a tool only after its description
+was read in the request.
+
 The netlists in `tests_automation/` are small, mostly hand-written, each containing
 the cases one group of tests needs (described in a comment at the top of each file),
 plus a copy of ICCAD test10. The Nangate45 tests are skipped if the Nangate45 files
 are not installed.
 
-## What the agent can do (30 tools, in `tools.py`)
+## What the agent can do (30 tools, in `agent/tools.py`)
 
 | Kind | Tools |
 |---|---|
@@ -236,8 +281,9 @@ Endpoint keywords for depth/path tools: `ANY_PI`, `ANY_DFF_Q`, `ANY_START`
 | Written netlists | `output/<path from the prompt>` (a full path is used as given) |
 | Long result lists | `output/<case>_r<request>_<name>.txt`, e.g. `test097_r04_paths_ANY_DFF_Q_to_ANY_DFF_D.txt` |
 | OpenROAD's messages | `debugging/logs/<run>/openroad.log` |
-| Per-request logs (developer mode) | `debugging/logs/<run>/<case>_request_<n>_<time>.log`: prompt, context, every model turn, tool results |
+| Per-request logs (developer mode) | `debugging/logs/<run>/<case>_request_<n>_<time>.log`: the tools offered, prompt, context, every model turn, tool results, and a **TRACE** at the end: one line per LLM call (each tool call with its arguments, what it ran -- e.g. `run_tool(...) -> get_cone`, `NOT RUN, description returned`, `REPEAT, refused` -- and ok / ERROR) |
 | Tools actually called (developer mode) | `debugging/run_analysis_<run>.csv`, one row per request; compare with `predicted_run_analysis.csv` (an expectation, not ground truth — see [debugging/README.md](debugging/README.md)) |
+| The run's settings (developer mode) | `debugging/run_info_<run>.json`: provider, model, tool access, design format, git commit |
 
 A run is one `run.sh` invocation (all its testcases) or one direct `circuitant`
 call; `<run>` is its start time, e.g. `20261010_190424`.

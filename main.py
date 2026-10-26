@@ -28,7 +28,27 @@ import yaml
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from agent import Agent  # noqa: E402
-from debugging.developer import run_logs_dir  # noqa: E402
+from debugging.developer import run_logs_dir, write_run_info  # noqa: E402
+
+
+# Per provider: the names its key may have in the key file or the environment.
+KEY_NAMES = {"openai": ("OPENAI_API_KEY",), "claude": ("CLAUDE_API_KEY", "ANTHROPIC_API_KEY")}
+DEFAULT_MODELS = {"openai": "gpt-5.4-mini", "claude": "claude-haiku-4-5"}
+
+
+def read_key_file(path: Path) -> dict[str, str]:
+    """KEY=value lines (quotes optional, # comments skipped); a file holding only a bare key gives {"": key}."""
+    keys = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, sep, value = line.partition("=")
+        if not sep:
+            keys[""] = line
+            continue
+        keys[name.strip().removeprefix("export ").strip()] = value.strip().strip("'\"")
+    return keys
 
 
 def load_config(path: str | Path) -> tuple[dict, str]:
@@ -37,17 +57,24 @@ def load_config(path: str | Path) -> tuple[dict, str]:
         config = yaml.safe_load(path.read_text()) or {}
     except FileNotFoundError:
         sys.exit(f"ERROR: config file not found: {path}")
-    openai_cfg = config.get("openai", {})
+    provider = config.setdefault("provider", "openai")
+    if provider not in KEY_NAMES:
+        sys.exit(f"ERROR: unknown provider {provider!r} (use one of {', '.join(KEY_NAMES)})")
+    section = config.get(provider) or {}
 
-    # API key: inline, else a key file (relative to the config), else the env.
-    key = openai_cfg.get("api_key") or os.environ.get("OPENAI_API_KEY")
-    if openai_cfg.get("api_key_file"):
-        key_file = (path.parent / openai_cfg["api_key_file"]).resolve()
-        if key_file.exists():
-            key = key_file.read_text().strip()
+    # API key: inline, else the key file (relative to the config), else the env.
+    names = KEY_NAMES[provider]
+    key = section.get("api_key")
+    key_file = config.get("api_key_file") or section.get("api_key_file")
+    if not key and key_file and (path.parent / key_file).exists():
+        keys = read_key_file((path.parent / key_file).resolve())
+        key = next((keys[n] for n in names if keys.get(n)), None)
+        if not key and provider == "openai":
+            key = keys.get("")  # old format: the file is just the OpenAI key
+    key = key or next((os.environ[n] for n in names if os.environ.get(n)), None)
     if not key:
-        sys.exit("ERROR: no OpenAI API key (set openai.api_key, openai.api_key_file "
-                 "or OPENAI_API_KEY)")
+        sys.exit(f"ERROR: no {provider} API key (set {' or '.join(names)} in {key_file or 'api_key_file'}, "
+                 f"{provider}.api_key, or the environment)")
     return config, key
 
 
@@ -84,12 +111,20 @@ def main() -> int:
     config, key = load_config(args.config)
     out = reserve_stdout(run_logs_dir(config.get("developer", {}).get("log_dir")) / "openroad.log")
 
-    model = config.get("openai", {}).get("model", "gpt-5.4-mini")
+    provider = config["provider"]
+    model = (config.get(provider) or {}).get("model", DEFAULT_MODELS[provider])
     output_dir = Path(".")  # without `output_dir`, outputs go to the current directory
     if config.get("output_dir"):
-        output_dir = Path(args.config).resolve().parent / config["output_dir"]
+        output_dir = (Path(args.config).resolve().parent / config["output_dir"]).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
-    agent = Agent(key, model, config.get("developer", {}), design_config(config, args.config), output_dir)
+    section = config.get(provider) or {}
+    agent = Agent(key, model, config.get("developer", {}), design_config(config, args.config), output_dir,
+                  provider, section.get("cache", True), section.get("price"), config.get("tools"))
+    if agent.run_analysis:  # developer mode: record what this run used (no keys)
+        write_run_info(agent.logs_dir.name, {
+            "config": str(Path(args.config).resolve()), "provider": provider, "model": model,
+            provider: {k: v for k, v in section.items() if k != "api_key"},
+            "tools": config.get("tools") or {"access": "all"}, "design": config.get("design") or {}})
 
     n = 0
     context = ""  # summary of earlier requests, passed into the next one

@@ -2,4 +2,6 @@
 # (the system Python 3), not a virtual environment -- see README.md, "Installation":
 #   /usr/bin/python3 -m pip install --user -r requirements.txt
 openai>=1.0     # OpenAI client (OpenAI() / chat.completions); tested with 3.26.1
+anthropic       # Claude client (Anthropic().messages), only for provider: claude; tested with 2.3.0
+rdflib          # tool knowledge graph (tools.access: graph); tested with 7.6.0
 pyyaml>=5.4     # config.yaml; tested with 5.4.1

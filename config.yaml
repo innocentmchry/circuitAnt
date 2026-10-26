@@ -1,9 +1,39 @@
 # circuitAnt configuration (paths are relative to this file).
 
+# Which chat model answers the requests: openai or claude.
+provider: openai
+
+# Keys are read from this file, one KEY="value" per line:
+# OPENAI_API_KEY for openai, CLAUDE_API_KEY (or ANTHROPIC_API_KEY) for claude.
+api_key_file: ./.env
+
+# cache: use the provider's prompt cache (repeated prompt beginnings billed cheaper; answers
+# are unchanged).  OpenAI always caches; for Claude it is this switch.
+# price: USD per 1M tokens, for the cost columns of the run analysis (developer mode).
+# Leave it out to leave them empty.  Check the providers' price pages when changing model.
 openai:
-  # The key is read from file mentioned here
-  api_key_file: ./.env
   model: gpt-4o-mini
+  # price: {input: 0.15, cached_input: 0.075, output: 0.60}
+
+claude:
+  model: claude-haiku-4-5
+  cache: true
+  # price: {input: 1.00, cached_input: 0.10, cache_write: 1.25, output: 5.00}
+
+# How the model reaches the tools in agent/tools.py (see agent/tool_access/).
+#   all:   every tool, sent with every LLM call.
+#   graph: every tool through the tool knowledge graph: their names in the system prompt,
+#          describe (several at once) -> pick one -> run_tool.
+# Without an access line the mode is all.
+tools:
+  # access: all
+  access: graph
+  graph:
+    core: []            # tools offered directly instead (e.g. [set_testcase_name, read_design, write_design])
+    catalog: names      # names: tool names only; summaries: each with its one-line summary
+    sparql: false       # also offer read-only SPARQL over the graph
+    search: false       # temporary keyword search_tools: keep off (to be replaced by embedding search)
+    knowledge: true     # include knowledge.ttl (concepts and synonyms, followedBy)
 
 # Logs: every run gets its own folder, debugging/logs/<run id>/ (run.sh: one for all
 # its testcases), holding openroad.log -- everything OpenROAD prints, kept off stdout,

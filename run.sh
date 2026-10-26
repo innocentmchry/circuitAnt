@@ -8,6 +8,11 @@
 # The prompts name their files relative to the folder's parent (testcase/<case>/...),
 # so circuitant runs there.  Its outputs (<case>.log, written netlists, result lists)
 # go to config.yaml's output_dir, or to that same parent folder if it is not set.
+#
+#   CIRCUITANT_CONFIG=experiments/configs/graph.yaml circuitAnt/run.sh testcase
+#                                           another config (e.g. another tools.access); default config.yaml
+#   CIRCUITANT_RUN=graph_r1 circuitAnt/run.sh testcase
+#                                           name the run (its logs, CSV and run_info); default the time
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,9 +21,13 @@ INPUT="$1"
 [[ -d "$INPUT" ]] || INPUT="$DIR/$1"
 [[ -d "$INPUT" ]] || { echo "run.sh: folder not found: $1" >&2; exit 1; }
 INPUT="$(cd "$INPUT" && pwd)"
+CONFIG="${CIRCUITANT_CONFIG:-$DIR/config.yaml}"
+[[ -f "$CONFIG" ]] || CONFIG="$DIR/$CONFIG"
+[[ -f "$CONFIG" ]] || { echo "run.sh: config not found: ${CIRCUITANT_CONFIG}" >&2; exit 1; }
+CONFIG="$(cd "$(dirname "$CONFIG")" && pwd)/$(basename "$CONFIG")"
 cd "$(dirname "$INPUT")"
-OUT="$(python3 -c 'import sys, yaml; print((yaml.safe_load(open(sys.argv[1])) or {}).get("output_dir") or "")' "$DIR/config.yaml")"
-if [[ -n "$OUT" ]]; then OUT="$(cd "$DIR" && mkdir -p "$OUT" && cd "$OUT" && pwd)"; else OUT="$PWD"; fi
+OUT="$(python3 -c 'import sys, yaml; print((yaml.safe_load(open(sys.argv[1])) or {}).get("output_dir") or "")' "$CONFIG")"
+if [[ -n "$OUT" ]]; then OUT="$(cd "$(dirname "$CONFIG")" && mkdir -p "$OUT" && cd "$OUT" && pwd)"; else OUT="$PWD"; fi
 
 export CIRCUITANT_RUN="${CIRCUITANT_RUN:-$(date +%Y%m%d_%H%M%S)}"  # one log folder for this run's testcases
 PASS=0
@@ -31,7 +40,7 @@ for test_dir in "$INPUT"/*/; do
     fi
     echo "=== $name"
     rm -f "$OUT/$name.log"
-    "$DIR/circuitant" -config "$DIR/config.yaml" < "$test_dir/prompt.txt" || true
+    "$DIR/circuitant" -config "$CONFIG" < "$test_dir/prompt.txt" || true
     if [[ -f "$OUT/$name.log" ]]; then PASS=$((PASS + 1)); else FAIL=$((FAIL + 1)); echo "[FAIL] $name: no $name.log"; fi
 done
 echo "$PASS testcases ran, $FAIL failed (outputs in $OUT; logs in debugging/logs/$CIRCUITANT_RUN)"

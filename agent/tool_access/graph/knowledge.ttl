@@ -1,0 +1,157 @@
+# circuitAnt tool knowledge that is not in the code: written by hand, reviewed by a domain expert.
+#
+#   * concepts: terms requests use, with synonyms (skos:altLabel), and the tools that answer them;
+#   * followedBy: which tool usually comes next;
+#   * denotes: which design objects the values of a kind name.
+#
+# Written from EDA terminology and the tool docstrings; the wording of testcases 1-50 was used only
+# to check coverage (testcases 51-100 are held out for evaluation).  Never put a testcase's signal
+# or gate names here.
+
+@prefix ca:   <https://w3id.org/circuitant/ontology#> .
+@prefix ct:   <https://w3id.org/circuitant/tools#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+# --- What the values of a kind name ------------------------------------------------------
+
+ct:Signal ca:denotes ca:Net .
+ct:StartPoint ca:denotes ca:Net .
+ct:EndPoint ca:denotes ca:Net .
+ct:FanoutTarget ca:denotes ca:Net, ca:GateInstance .
+ct:Gate ca:denotes ca:GateInstance .
+
+# --- Concepts ------------------------------------------------------------------------------
+
+ct:concept.session a ca:Concept ; rdfs:label "testcase session" ;
+    skos:altLabel "new testcase", "case name", "load the design", "read the netlist", "write the design",
+                  "save the netlist", "output file" ;
+    ca:answeredBy ct:set_testcase_name, ct:read_design, ct:write_design .
+
+ct:concept.gate_count a ca:Concept ; rdfs:label "gate count" ;
+    skos:altLabel "number of gates", "how many gates", "total gates", "breakdown by gate type",
+                  "cell count", "inventory" ;
+    ca:answeredBy ct:count_gates, ct:find_gates .
+
+ct:concept.gate_lookup a ca:Concept ; rdfs:label "finding gates" ;
+    skos:altLabel "list gates", "gates of a type", "gate type of", "pin connections", "gates connected to",
+                  "flip-flops driven by clock", "full adder", "multiplexer", "AOI", "OAI" ;
+    ca:answeredBy ct:find_gates .
+
+ct:concept.flip_flop a ca:Concept ; rdfs:label "flip-flop" ;
+    skos:altLabel "register", "DFF", "sequential element", "latch", "clock pin" ;
+    ca:answeredBy ct:find_gates, ct:count_gates, ct:find_enable_hold .
+
+ct:concept.ports a ca:Concept ; rdfs:label "ports" ;
+    skos:altLabel "primary inputs", "primary outputs", "PI", "PO", "I/O", "bit width", "interface" ;
+    ca:answeredBy ct:get_ports .
+
+ct:concept.logic_depth a ca:Concept ; rdfs:label "logic depth" ;
+    skos:altLabel "critical path", "longest path", "deepest path", "levels of logic", "logic levels",
+                  "path depth", "maximum depth", "register-to-register" ;
+    ca:answeredBy ct:get_max_depth, ct:get_endpoint_stats .
+
+ct:concept.depth_reduction a ca:Concept ; rdfs:label "depth reduction" ;
+    skos:altLabel "reduce the depth", "shorten the critical path", "minimize path depth",
+                  "restructure for speed", "optimize timing" ;
+    ca:answeredBy ct:reduce_depth .
+
+ct:concept.endpoint_statistics a ca:Concept ; rdfs:label "per-output statistics" ;
+    skos:altLabel "which output", "how many outputs", "output bit with", "largest cone", "deepest cone",
+                  "greater than", "at least" ;
+    ca:answeredBy ct:get_endpoint_stats .
+
+ct:concept.paths a ca:Concept ; rdfs:label "combinational paths" ;
+    skos:altLabel "path exists", "path from", "depends on", "dependency", "reachable", "avoiding",
+                  "does not traverse", "direct connection", "paths of length", "count paths" ;
+    ca:answeredBy ct:find_all_paths .
+
+ct:concept.cut_points a ca:Concept ; rdfs:label "cut points" ;
+    skos:altLabel "articulation point", "cut vertex", "dominator", "every path passes through",
+                  "single point", "is a cut" ;
+    ca:answeredBy ct:find_cut_points .
+
+ct:concept.fanin_cone a ca:Concept ; rdfs:label "fanin cone" ;
+    skos:altLabel "transitive fanin", "input cone", "logic cone", "cone of influence", "support",
+                  "gates contributing to" ;
+    ca:answeredBy ct:get_cone .
+
+ct:concept.fanout_cone a ca:Concept ; rdfs:label "fanout cone" ;
+    skos:altLabel "transitive fanout", "reachable from", "downstream", "affected by" ;
+    ca:answeredBy ct:get_cone .
+
+ct:concept.fanout a ca:Concept ; rdfs:label "fanout" ;
+    skos:altLabel "loads", "drives", "load count", "high fanout", "maximum fanout", "driven directly" ;
+    ca:answeredBy ct:get_fanout .
+
+ct:concept.buffering a ca:Concept ; rdfs:label "buffer insertion" ;
+    skos:altLabel "insert buffers", "add buffers", "BUF", "fanout limit", "no more than loads",
+                  "dedicated buffer", "buffer tree" ;
+    ca:answeredBy ct:insert_buffers_for_fanout, ct:insert_dedicated_buffers_for_loads .
+
+ct:concept.inverter_pairs a ca:Concept ; rdfs:label "inverter pairs" ;
+    skos:altLabel "back-to-back inverters", "double inversion", "inverter chain", "redundant inverters",
+                  "NOT feeding NOT" ;
+    ca:answeredBy ct:find_inverter_pairs, ct:collapse_inverter_pairs .
+
+ct:concept.duplicates a ca:Concept ; rdfs:label "duplicate gates" ;
+    skos:altLabel "structural duplicates", "redundant gates", "identical gates", "same inputs",
+                  "common subexpression", "recomputed" ;
+    ca:answeredBy ct:find_duplicates, ct:merge_duplicate_gates .
+
+ct:concept.dangling a ca:Concept ; rdfs:label "dangling gates" ;
+    skos:altLabel "unused gates", "dead logic", "does not contribute", "floating", "prune", "trim",
+                  "redundant gates" ;
+    ca:answeredBy ct:remove_dangling_gates .
+
+ct:concept.constants a ca:Concept ; rdfs:label "constant inputs" ;
+    skos:altLabel "tied to constant", "constant 1", "constant 0", "1'b1", "1'b0", "tie-high", "tie-low" ;
+    ca:answeredBy ct:simplify_gates_with_constant_inputs, ct:find_gates .
+
+ct:concept.enable_hold a ca:Concept ; rdfs:label "enable / hold logic" ;
+    skos:altLabel "enable", "hold", "feedback from Q", "load enable", "recirculating mux" ;
+    ca:answeredBy ct:find_enable_hold .
+
+ct:concept.boolean_function a ca:Concept ; rdfs:label "Boolean function" ;
+    skos:altLabel "Boolean equation", "Boolean expression", "logic function", "in terms of its inputs" ;
+    ca:answeredBy ct:derive_boolean_equation .
+
+ct:concept.equivalence a ca:Concept ; rdfs:label "functional equivalence" ;
+    skos:altLabel "functionally equivalent", "equivalence check", "formal verification",
+                  "same function", "logically equivalent", "verify against the original" ;
+    ca:answeredBy ct:check_equivalence, ct:check_signal_equivalence .
+
+ct:concept.symmetry a ca:Concept ; rdfs:label "symmetry" ;
+    skos:altLabel "symmetric", "swap inputs", "interchangeable inputs" ;
+    ca:answeredBy ct:check_symmetry .
+
+ct:concept.renaming a ca:Concept ; rdfs:label "renaming" ;
+    skos:altLabel "rename", "change the identifier", "new name", "update all references" ;
+    ca:answeredBy ct:rename_gate, ct:rename_wire .
+
+ct:concept.gate_set a ca:Concept ; rdfs:label "restricted gate set" ;
+    skos:altLabel "only NAND", "only NOR", "NAND and NOT", "universal gates", "remap", "technology mapping",
+                  "convert to", "decompose", "built only from", "equivalent circuit" ;
+    ca:answeredBy ct:remap_gates, ct:replace_gate_type .
+
+# --- Which tool usually comes next ---------------------------------------------------------
+
+ct:set_testcase_name ca:followedBy ct:read_design .
+ct:read_design ca:followedBy ct:count_gates .
+ct:find_inverter_pairs ca:followedBy ct:collapse_inverter_pairs .
+ct:find_duplicates ca:followedBy ct:merge_duplicate_gates .
+ct:get_fanout ca:followedBy ct:insert_buffers_for_fanout .
+ct:get_max_depth ca:followedBy ct:reduce_depth .
+
+# A transformation is usually checked and measured afterwards.
+ct:remove_dangling_gates ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:collapse_inverter_pairs ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:merge_duplicate_gates ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:simplify_gates_with_constant_inputs ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:insert_buffers_for_fanout ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:insert_dedicated_buffers_for_loads ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:reduce_depth ca:followedBy ct:check_equivalence, ct:get_max_depth .
+ct:remap_gates ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:replace_gate_type ca:followedBy ct:check_equivalence, ct:count_gates .
+ct:rename_gate ca:followedBy ct:check_equivalence .
+ct:rename_wire ca:followedBy ct:check_equivalence .

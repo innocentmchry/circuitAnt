@@ -1,0 +1,54 @@
+# Experiment config: tools.access all.  Everything else as config.yaml -- keep them in step.
+# Run: CIRCUITANT_CONFIG=experiments/configs/all.yaml CIRCUITANT_RUN=<name> ./run.sh testcase
+# (paths are relative to this file)
+
+# Which chat model answers the requests: openai or claude.
+provider: openai
+
+# Keys are read from this file, one KEY="value" per line:
+# OPENAI_API_KEY for openai, CLAUDE_API_KEY (or ANTHROPIC_API_KEY) for claude.
+api_key_file: ../../.env
+
+# cache: use the provider's prompt cache (repeated prompt beginnings billed cheaper; answers
+# are unchanged).  OpenAI always caches; for Claude it is this switch.
+# price: USD per 1M tokens, for the cost columns of the run analysis (developer mode).
+# Leave it out to leave them empty.  Check the providers' price pages when changing model.
+openai:
+  model: gpt-4o-mini
+  # price: {input: 0.15, cached_input: 0.075, output: 0.60}
+
+claude:
+  model: claude-haiku-4-5
+  cache: true
+  # price: {input: 1.00, cached_input: 0.10, cache_write: 1.25, output: 5.00}
+
+# How the model reaches the tools in agent/tools.py (see agent/tool_access/).
+#   all:   every tool, sent with every LLM call.
+#   graph: the session tools directly; the others through the tool knowledge graph
+#          (a catalog in the system prompt, describe / run_tool / search_tools).
+tools:
+  access: all
+
+# Logs: every run gets its own folder, debugging/logs/<run id>/ (run.sh: one for all
+# its testcases), holding openroad.log -- everything OpenROAD prints, kept off stdout,
+# which carries only the #RESPONSE blocks -- and, in developer mode, the request logs.
+
+# Testcase logs (<case>.log), written designs and result lists (paths_*.txt, cone_*.txt, ...)
+# go here (relative to this file).  Leave it out to write them to the current directory.
+output_dir: ../results/output_all
+
+# How netlists are read (read_design).  iccad: the ICCAD gate-primitive format on the
+# built-in gate library.  generic: any gate-level Verilog OpenROAD can read, with
+# its own LEF (technology first) and Liberty files.  Generic netlists must be flattened
+# (a single module); that module is the top.
+design:
+  format: iccad
+  # format: generic
+  # lef: [/home/innocent/OpenROAD/test/Nangate45/Nangate45_tech.lef,
+  #       /home/innocent/OpenROAD/test/Nangate45/Nangate45_stdcell.lef]
+  # liberty: [/home/innocent/OpenROAD/test/Nangate45/Nangate45_typ.lib]
+
+developer:
+  mode: true          # one human-readable log per request in debugging/logs/<run>/, and
+                      # the tools each request called in debugging/run_analysis_<run>.csv
+  # log_dir: /some/dir  # logs go to <log_dir>/logs/<run>/ instead of debugging/logs/<run>/

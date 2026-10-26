@@ -17,11 +17,12 @@ digraph circuitAnt {
   }
 
   subgraph cluster_agent {
-    label="Agent"; style="rounded"; color="#d6bcfa"; fontcolor="#6b46c1"; bgcolor="#faf5ff";
-    agent [label="agent.py\nsystem prompt  ·  history summary\nLLM loop", fillcolor="#e9d8fd"];
-    tools [label="tools.py\n30 tools = Tools methods\n(schemas generated)", fillcolor="#e9d8fd"];
+    label="agent/ (the LLM side)"; style="rounded"; color="#d6bcfa"; fontcolor="#6b46c1"; bgcolor="#faf5ff";
+    agent  [label="agent.py\nsystem prompt  ·  history summary\nLLM loop  ·  llm.py (providers)", fillcolor="#e9d8fd"];
+    access [label="tool_access/\nhow the tools are offered\nall: every schema  ·  graph: tool knowledge graph", fillcolor="#e9d8fd"];
+    tools  [label="tools.py\n30 tools = Tools methods\n(docstring · Param · @tool)", fillcolor="#e9d8fd"];
   }
-  llm [label="OpenAI\nchat model", shape=ellipse, fillcolor="#fefcbf", color="#b7791f"];
+  llm [label="OpenAI / Claude\nchat model", shape=ellipse, fillcolor="#fefcbf", color="#b7791f"];
 
   subgraph cluster_engine {
     label="eda_engine"; style="rounded"; color="#9ae6b4"; fontcolor="#276749"; bgcolor="#f0fff4";
@@ -42,13 +43,14 @@ digraph circuitAnt {
   subgraph cluster_out {
     label="Outputs"; style="rounded,dashed"; color="#a0aec0"; fontcolor="#4a5568";
     out  [label="output/\n<case>.log (#RESPONSE)\nwritten netlists · result lists", fillcolor="#edf2f7"];
-    dbg  [label="debugging/\nlogs/<run>/ · run_analysis_<run>.csv", fillcolor="#edf2f7"];
+    dbg  [label="debugging/\nlogs/<run>/ · run_analysis_<run>.csv\nrun_info_<run>.json", fillcolor="#edf2f7"];
   }
 
   prompt -> runsh -> exe;
   exe -> agent [label="request\n+ context"];
   agent -> llm [label="prompt + tools", dir=both];
-  agent -> tools [label="tool calls"];
+  agent -> access [label="tool calls"];
+  access -> tools;
   tools -> io; tools -> analysis; tools -> transform; tools -> verify;
   io -> design;
   analysis -> design [style=dashed, arrowhead=none];
