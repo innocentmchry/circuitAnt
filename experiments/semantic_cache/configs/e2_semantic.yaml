@@ -1,0 +1,14 @@
+experiment_id: E2
+strategy: semantic
+exact_enabled: true
+embedding_enabled: true
+embedding_model: all-MiniLM-L6-v2
+retrieval_top_k: 5
+cosine_threshold: 0.85
+reranker_enabled: false
+structural_validation_enabled: false
+reliability_enabled: false
+random_seed: 42
+cache_capacity: null
+results_dir: experiments/semantic_cache/results
+dataset_path: experiments/semantic_cache/data/benchmark_traces.jsonl
