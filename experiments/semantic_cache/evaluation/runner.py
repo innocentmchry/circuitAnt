@@ -15,6 +15,35 @@ from .logger import ExperimentLogger
 from .metrics import compute_metrics, plans_agree
 
 
+def _load_tools_ast_metadata() -> Dict[str, Dict[str, Any]]:
+    """Dynamically parses agent/tools.py using AST to extract signatures, types, and docstrings."""
+    import ast
+    for path_cand in ("agent/tools.py", "../../agent/tools.py", "c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/agent/tools.py"):
+        pth = Path(path_cand)
+        if pth.exists():
+            try:
+                tree = ast.parse(pth.read_text(encoding="utf-8"))
+                tools_cls = [n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Tools"][0]
+                meta = {}
+                for m in tools_cls.body:
+                    if isinstance(m, ast.FunctionDef) and not m.name.startswith("_"):
+                        params = []
+                        for a in m.args.args:
+                            if a.arg == "self":
+                                continue
+                            ann = ast.unparse(a.annotation) if a.annotation else ""
+                            params.append(f"{a.arg}: {ann}" if ann else a.arg)
+                        doc = ast.get_docstring(m) or ""
+                        meta[m.name] = {
+                            "params": params,
+                            "doc": doc,
+                        }
+                return meta
+            except Exception:
+                pass
+    return {}
+
+
 class ExperimentRunner:
     """Independent runner for deterministic offline replay and ablation evaluation."""
 
@@ -55,6 +84,7 @@ class ExperimentRunner:
             self.reliability_model = ReliabilityModel(confidence_threshold=conf_thresh)
 
         # Light LLM Argument Extractor
+        self.tools_metadata = _load_tools_ast_metadata()
         self.light_llm_enabled = bool(config.get("light_llm_enabled", False))
         self.openai_client = None
         if self.light_llm_enabled:
@@ -80,24 +110,36 @@ class ExperimentRunner:
                     return raw
         return os.environ.get("OPENAI_API_KEY")
 
-    def _call_light_llm_extract(self, tool_name: str, request_prompt: str) -> Tuple[Optional[Dict[str, Any]], int]:
-        """Live OpenAI API call to extract arguments for the target tool."""
-        if not self.openai_client:
+    def _call_light_llm_extract_plan(self, candidate_tool_calls: List[ToolCall], request_prompt: str) -> Tuple[Optional[List[ToolCall]], int]:
+        """Live OpenAI API call to extract arguments for the entire candidate plan with docstrings."""
+        if not self.openai_client or not candidate_tool_calls:
             return None, 0
 
-        expected_params = {}
-        if self.structural_validator:
-            expected_params = getattr(self.structural_validator, "tool_arg_types", {}).get(tool_name, {})
+        # Build tools description with docstrings and type annotations
+        tool_descs = []
+        for idx, tc in enumerate(candidate_tool_calls, 1):
+            t_name = tc.tool
+            meta = self.tools_metadata.get(t_name, {})
+            param_list = meta.get("params", [])
+            param_str = f"({', '.join(param_list)})" if param_list else "()"
+            doc_str = meta.get("doc", "")
+            first_line = doc_str.strip().splitlines()[0] if doc_str else ""
+            tool_descs.append(f"{idx}. {t_name}{param_str}\n   Docstring: {first_line}")
 
-        param_str = f"({', '.join(expected_params.keys())})" if expected_params else ""
+        tools_block = "\n".join(tool_descs)
+        is_multi = len(candidate_tool_calls) > 1
+
         sys_prompt = (
-            f"You are a strict argument extractor for an EDA tool.\n"
-            f"Tool: {tool_name}{param_str}\n"
+            f"You are a strict, expert argument extractor for an EDA execution plan.\n"
+            f"Plan Tools to Call:\n{tools_block}\n\n"
             f"User Request: \"{request_prompt}\"\n\n"
             f"Instructions:\n"
-            f"1. Extract arguments for '{tool_name}' from the user request as a JSON object.\n"
-            f"2. If the user request does not match this tool, or if required arguments are missing, return {{\"reject\": true}}.\n"
-            f"3. Return ONLY valid JSON (no markdown formatting, no commentary)."
+            f"1. Extract arguments for the tool(s) from the user request.\n"
+            f"2. Pay close attention to parameter types, names, and docstrings.\n"
+            f"   (e.g., outputs are 'sink', inputs/flip-flops are 'source', 'direction' is 'fanin' or 'fanout').\n"
+            f"3. If the request contradicts the tools or required info is missing, return {{\"reject\": true}}.\n"
+            + (f"4. Return strictly a JSON list of objects: [{{\"tool\": \"...\", \"args\": {{...}}}}, ...]" if is_multi else
+               f"4. Return strictly a JSON object of arguments: {{\"param\": value, ...}}")
         )
 
         try:
@@ -107,15 +149,30 @@ class ExperimentRunner:
                 model=model,
                 messages=[{"role": "user", "content": sys_prompt}],
                 temperature=0.0,
-                max_tokens=120,
+                max_tokens=180,
             )
-            tokens_used = resp.usage.total_tokens if resp.usage else 60
+            tokens_used = resp.usage.total_tokens if resp.usage else 70
             raw_content = resp.choices[0].message.content or "{}"
             raw_content = raw_content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             data = json.loads(raw_content)
-            if not isinstance(data, dict) or data.get("reject"):
+
+            if isinstance(data, dict) and data.get("reject"):
                 return None, tokens_used
-            return data, tokens_used
+
+            bound_plan: List[ToolCall] = []
+            if is_multi:
+                if not isinstance(data, list):
+                    return None, tokens_used
+                for item in data:
+                    t = item.get("tool")
+                    a = item.get("args", {})
+                    bound_plan.append(ToolCall(tool=t, args=a))
+            else:
+                target_tool = candidate_tool_calls[0].tool
+                args = data.get("args", data) if isinstance(data, dict) else {}
+                bound_plan.append(ToolCall(tool=target_tool, args=args))
+
+            return bound_plan, tokens_used
         except Exception:
             return None, 0
 
@@ -281,13 +338,12 @@ class ExperimentRunner:
                     candidate_scores=candidate_scores_log,
                 ), latencies
 
-            target_tool = best_candidate.entry.tool_calls[0].tool
             t_llm = time.perf_counter()
-            extracted_args, tokens_spent = self._call_light_llm_extract(target_tool, prompt)
+            bound_plan, tokens_spent = self._call_light_llm_extract_plan(best_candidate.entry.tool_calls, prompt)
             latencies["validation"] = time.perf_counter() - t_llm
             latencies["light_llm_tokens"] = tokens_spent
 
-            if extracted_args is None:
+            if bound_plan is None:
                 return CacheDecision(
                     accepted=False,
                     decision_type="FALLBACK",
@@ -295,20 +351,25 @@ class ExperimentRunner:
                     candidate_scores=candidate_scores_log,
                 ), latencies
 
-            # Schema validation
+            # Schema validation for all calls in plan
             if self.structural_validator:
-                valid, err = self.structural_validator.validate_schema(target_tool, extracted_args)
-                if not valid:
+                all_valid = True
+                for tc in bound_plan:
+                    valid, err = self.structural_validator.validate_schema(tc.tool, tc.args)
+                    if not valid:
+                        all_valid = False
+                        break
+                if not all_valid:
                     return CacheDecision(
                         accepted=False,
                         decision_type="FALLBACK",
-                        reason=f"schema_validation_failed: {err}",
+                        reason="schema_validation_failed",
                         candidate_scores=candidate_scores_log,
                     ), latencies
 
             best_candidate.validation_passed = True
-            best_candidate.bound_tool_calls = [ToolCall(tool=target_tool, args=extracted_args)]
-            best_candidate.extracted_params = extracted_args
+            best_candidate.bound_tool_calls = bound_plan
+            best_candidate.extracted_params = bound_plan[0].args if bound_plan else {}
 
             return CacheDecision(
                 accepted=True,
