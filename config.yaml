@@ -58,3 +58,17 @@ developer:
   mode: true          # one human-readable log per request in debugging/logs/<run>/, and
                       # the tools each request called in debugging/run_analysis_<run>.csv
   # log_dir: /some/dir  # logs go to <log_dir>/logs/<run>/ instead of debugging/logs/<run>/
+
+# Hybrid Semantic Tool-Call Caching Framework
+# Leave commented out or set enabled: false for baseline circuitAnt execution.
+cache:
+  enabled: false
+  strategy: full_hybrid  # exact, semantic, semantic_structural, full_hybrid
+  embedding_model: all-MiniLM-L6-v2
+  cosine_threshold: 0.80
+  reranker_enabled: true
+  reranker_model: cross-encoder/ms-marco-MiniLM-L6-v2
+  structural_validation_enabled: true
+  parameter_substitution_enabled: true
+  reliability_enabled: true
+  confidence_threshold: 0.65
