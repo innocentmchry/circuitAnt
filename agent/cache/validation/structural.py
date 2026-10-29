@@ -69,9 +69,49 @@ class StructuralValidator:
             "replace_gate_type": {"gate_type": str, "allowed": str, "signal": str},
         }
 
-    def validate_schema(self, tool_name: str, args: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+    def validate_func_signature(self, func: Any, args: Dict[str, Any]) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+        """Completely generalized argument validation using Python runtime introspection."""
+        import inspect
+        try:
+            sig = inspect.signature(func)
+        except (ValueError, TypeError):
+            return True, None, dict(args)
+
+        bound_args = {}
+        params = sig.parameters
+
+        for k, v in args.items():
+            if k not in params:
+                return False, f"Unexpected argument '{k}' for function '{getattr(func, '__name__', str(func))}'", {}
+            param = params[k]
+            if param.annotation != inspect.Parameter.empty and v is not None:
+                expected_type = param.annotation
+                if isinstance(expected_type, type) and not isinstance(v, expected_type):
+                    try:
+                        v = expected_type(v)
+                    except (ValueError, TypeError):
+                        return False, f"Argument '{k}' must be {expected_type.__name__}, got {type(v).__name__}", {}
+            bound_args[k] = v
+
+        try:
+            bound = sig.bind(**bound_args)
+            bound.apply_defaults()
+            return True, None, dict(bound.arguments)
+        except TypeError as e:
+            return False, str(e), {}
+
+    def validate_schema(self, tool_name: str, args: Dict[str, Any], tool_func: Optional[Any] = None) -> Tuple[bool, Optional[str]]:
+        if tool_func is not None:
+            valid, err, bound = self.validate_func_signature(tool_func, args)
+            if valid:
+                args.clear()
+                args.update(bound)
+                return True, None
+            return False, err
+
         if tool_name not in self.tool_arg_types:
-            return False, f"Unknown tool: {tool_name}"
+            # Generalized fallback: allow if unknown to avoid blocking unseen tools
+            return True, None
         expected_params = self.tool_arg_types[tool_name]
         for k, v in args.items():
             if k not in expected_params:

@@ -1,3 +1,4 @@
+from pathlib import Path
 import os
 import random
 import time
@@ -52,6 +53,71 @@ class ExperimentRunner:
         if config.get("reliability_enabled", False):
             conf_thresh = config.get("confidence_threshold", 0.65)
             self.reliability_model = ReliabilityModel(confidence_threshold=conf_thresh)
+
+        # Light LLM Argument Extractor
+        self.light_llm_enabled = bool(config.get("light_llm_enabled", False))
+        self.openai_client = None
+        if self.light_llm_enabled:
+            api_key = self._load_api_key()
+            if api_key:
+                try:
+                    from openai import OpenAI
+                    self.openai_client = OpenAI(api_key=api_key)
+                except Exception as e:
+                    print(f"[WARNING] Could not initialize OpenAI client for Light LLM: {e}")
+
+
+    def _load_api_key(self) -> Optional[str]:
+        for env_path in ("../../.env", ".env", "c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/.env"):
+            p = Path(env_path)
+            if p.exists():
+                raw = p.read_text(encoding="utf-8", errors="ignore").strip()
+                if "=" in raw:
+                    for line in raw.splitlines():
+                        if "OPENAI_API_KEY" in line:
+                            return line.partition("=")[2].strip("'\" \r\n")
+                elif raw.startswith("sk-"):
+                    return raw
+        return os.environ.get("OPENAI_API_KEY")
+
+    def _call_light_llm_extract(self, tool_name: str, request_prompt: str) -> Tuple[Optional[Dict[str, Any]], int]:
+        """Live OpenAI API call to extract arguments for the target tool."""
+        if not self.openai_client:
+            return None, 0
+
+        expected_params = {}
+        if self.structural_validator:
+            expected_params = getattr(self.structural_validator, "tool_arg_types", {}).get(tool_name, {})
+
+        param_str = f"({', '.join(expected_params.keys())})" if expected_params else ""
+        sys_prompt = (
+            f"You are a strict argument extractor for an EDA tool.\n"
+            f"Tool: {tool_name}{param_str}\n"
+            f"User Request: \"{request_prompt}\"\n\n"
+            f"Instructions:\n"
+            f"1. Extract arguments for '{tool_name}' from the user request as a JSON object.\n"
+            f"2. If the user request does not match this tool, or if required arguments are missing, return {{\"reject\": true}}.\n"
+            f"3. Return ONLY valid JSON (no markdown formatting, no commentary)."
+        )
+
+        try:
+            import json
+            model = self.config.get("light_llm_model", "gpt-4o-mini")
+            resp = self.openai_client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": sys_prompt}],
+                temperature=0.0,
+                max_tokens=120,
+            )
+            tokens_used = resp.usage.total_tokens if resp.usage else 60
+            raw_content = resp.choices[0].message.content or "{}"
+            raw_content = raw_content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            data = json.loads(raw_content)
+            if not isinstance(data, dict) or data.get("reject"):
+                return None, tokens_used
+            return data, tokens_used
+        except Exception:
+            return None, 0
 
     def _is_safe_exact_reuse(self, tool_calls: List[ToolCall], target_testcase: str) -> bool:
         """Check whether tool calls have no stale netlist-dependent arguments."""
@@ -186,6 +252,73 @@ class ExperimentRunner:
         best_candidate = candidate_matches[0]
         candidate_scores_log = [cm.to_dict() for cm in candidate_matches]
 
+        # 3. Generalized Light LLM Strategy (E7)
+        if self.light_llm_enabled:
+            # Check similarity threshold on Top-1
+            if best_candidate.cosine_similarity < cos_thresh:
+                return CacheDecision(
+                    accepted=False,
+                    decision_type="MISS",
+                    reason=f"cosine_similarity_{best_candidate.cosine_similarity:.3f}_below_threshold_{cos_thresh}",
+                    candidate_scores=candidate_scores_log,
+                ), latencies
+
+            # Polarity / negative constraint check
+            pass_neg, neg_reason = check_negative_constraints(prompt, best_candidate.entry.original_request)
+            if not pass_neg:
+                return CacheDecision(
+                    accepted=False,
+                    decision_type="FALLBACK",
+                    reason=f"negative_constraint_rejection: {neg_reason}",
+                    candidate_scores=candidate_scores_log,
+                ), latencies
+
+            if not best_candidate.entry.tool_calls:
+                return CacheDecision(
+                    accepted=False,
+                    decision_type="FALLBACK",
+                    reason="candidate_has_no_tool_calls",
+                    candidate_scores=candidate_scores_log,
+                ), latencies
+
+            target_tool = best_candidate.entry.tool_calls[0].tool
+            t_llm = time.perf_counter()
+            extracted_args, tokens_spent = self._call_light_llm_extract(target_tool, prompt)
+            latencies["validation"] = time.perf_counter() - t_llm
+            latencies["light_llm_tokens"] = tokens_spent
+
+            if extracted_args is None:
+                return CacheDecision(
+                    accepted=False,
+                    decision_type="FALLBACK",
+                    reason="light_llm_rejected_or_unextractable",
+                    candidate_scores=candidate_scores_log,
+                ), latencies
+
+            # Schema validation
+            if self.structural_validator:
+                valid, err = self.structural_validator.validate_schema(target_tool, extracted_args)
+                if not valid:
+                    return CacheDecision(
+                        accepted=False,
+                        decision_type="FALLBACK",
+                        reason=f"schema_validation_failed: {err}",
+                        candidate_scores=candidate_scores_log,
+                    ), latencies
+
+            best_candidate.validation_passed = True
+            best_candidate.bound_tool_calls = [ToolCall(tool=target_tool, args=extracted_args)]
+            best_candidate.extracted_params = extracted_args
+
+            return CacheDecision(
+                accepted=True,
+                decision_type="HIT",
+                reason="generalized_light_llm_hit",
+                selected_candidate=best_candidate,
+                tool_calls=best_candidate.bound_tool_calls,
+                candidate_scores=candidate_scores_log,
+            ), latencies
+
         # 3. Structural Validation & Parameter Substitution if enabled (E4, E5, E6)
         if self.structural_validator and self.config.get("structural_validation_enabled", False):
             t_val = time.perf_counter()
@@ -285,7 +418,10 @@ class ExperimentRunner:
         traces = load_dataset(dataset_path)
         request_records: List[Dict[str, Any]] = []
 
-        for trace in traces:
+        total_traces = len(traces)
+        for idx, trace in enumerate(traces, 1):
+            if idx % 50 == 0 or idx == total_traces:
+                print(f"Replay Progress: [{idx}/{total_traces}] requests evaluated...")
             req_id = trace["request_id"]
             prompt = trace["prompt"]
             testcase = trace["testcase"]
@@ -331,10 +467,11 @@ class ExperimentRunner:
             # Savings calculation
             if decision.accepted:
                 # LLM planning call avoided!
-                prompt_tokens_saved = base_prompt_tokens
+                spent_tokens = int(latencies.get("light_llm_tokens", 0))
+                prompt_tokens_saved = max(0, base_prompt_tokens - spent_tokens)
                 completion_tokens_saved = base_completion_tokens
-                total_tokens_saved = base_total_tokens
-                actual_lat = cache_overhead
+                total_tokens_saved = max(0, base_total_tokens - spent_tokens)
+                actual_lat = cache_overhead + latencies.get("validation", 0.0)
                 lat_saved = max(0.0, base_latency - actual_lat)
                 cost_saved = (prompt_tokens_saved * 0.15 / 1e6) + (completion_tokens_saved * 0.60 / 1e6)
             else:

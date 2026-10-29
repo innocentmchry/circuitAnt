@@ -22,6 +22,8 @@ def run_single_config(config_path: str) -> dict:
 
     # Ensure dataset exists
     ds_path = cfg.get("dataset_path", "experiments/semantic_cache/data/benchmark_traces.jsonl")
+    if not os.path.isabs(ds_path):
+        ds_path = str((REPO_ROOT / ds_path).resolve())
     if not os.path.exists(ds_path):
         print(f"Building benchmark dataset traces -> {ds_path}")
         build_benchmark_dataset(output_path=ds_path, max_cases=999)

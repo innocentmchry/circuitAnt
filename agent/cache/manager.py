@@ -80,7 +80,7 @@ class AgentCacheManager:
         query_emb, _ = self.embedding_model.encode(request)
         candidates_with_emb = [(e.entry_id, e.embedding) for e in all_entries if e.embedding]
         top_k = self.config.get("retrieval_top_k", 5)
-        cos_thresh = self.config.get("cosine_threshold", 0.75)
+        cos_thresh = self.config.get("cosine_threshold", 0.82)
 
         retrieved = self.embedding_model.retrieve_top_k(
             query_emb, candidates_with_emb, top_k=top_k, threshold=cos_thresh
@@ -88,40 +88,85 @@ class AgentCacheManager:
         if not retrieved:
             return False, None
 
-        candidate_entries = [self.store.entries[cand_id] for cand_id, _, _ in retrieved]
+        # Select Top-1 Candidate
+        best_cand_id, best_sim, _ = retrieved[0]
+        best_entry = self.store.entries[best_cand_id]
 
-        # Rerank if enabled
-        if self.reranker:
-            cand_texts = [e.original_request for e in candidate_entries]
-            scores, _ = self.reranker.score_pairs(request, cand_texts)
-            scored_entries = sorted(zip(candidate_entries, scores), key=lambda x: x[1], reverse=True)
-            candidate_entries = [e for e, _ in scored_entries]
+        # 1. Polarity and negative constraint check
+        pass_neg, neg_reason = check_negative_constraints(request, best_entry.original_request)
+        if not pass_neg:
+            return False, None
 
-        # Structural validation & Parameter substitution
-        for entry in candidate_entries:
-            if self.structural_validator:
-                success, bound_calls, reason, params = self.structural_validator.instantiate_template(
-                    entry.tool_calls,
-                    entry.original_request,
-                    request,
-                    testcase_name=testcase,
+        if not best_entry.tool_calls:
+            return False, None
+
+        target_tool = best_entry.tool_calls[0].tool
+        tool_func = getattr(agent.tools, target_tool, None) if hasattr(agent, "tools") else None
+
+        # 2. Light LLM argument extraction (~100 tokens, no regex)
+        extracted_args = self._extract_args_with_llm(agent, target_tool, tool_func, request)
+        if extracted_args is None:
+            return False, None
+
+        # 3. Generalized schema and signature validation
+        if self.structural_validator:
+            valid, err = self.structural_validator.validate_schema(target_tool, extracted_args, tool_func=tool_func)
+            if not valid:
+                return False, None
+
+        # 4. Construct bound call and execute safely
+        bound_calls = [ToolCall(tool=target_tool, args=extracted_args)]
+        return self._execute_calls(agent, bound_calls, tool_summaries, calls, log, request, context_summary)
+
+    def _extract_args_with_llm(
+        self, agent: Any, tool_name: str, tool_func: Optional[Any], request: str
+    ) -> Optional[Dict[str, Any]]:
+        """Lightweight LLM call (~100 tokens) to extract arguments for a single target tool."""
+        import inspect
+        sig_str = ""
+        doc_str = ""
+        if tool_func is not None:
+            try:
+                sig_str = str(inspect.signature(tool_func))
+                doc_str = inspect.getdoc(tool_func) or ""
+            except Exception:
+                pass
+
+        prompt = (
+            f"You are a strict argument extractor for an EDA tool.\n"
+            f"Tool: {tool_name}{sig_str}\n"
+            + (f"Description: {doc_str}\n" if doc_str else "")
+            + f"User Request: \"{request}\"\n\n"
+            f"Instructions:\n"
+            f"1. Extract the arguments required for '{tool_name}' from the user request as a JSON object.\n"
+            f"2. If the user request does not match this tool, or if required arguments are missing, return {{\"reject\": true}}.\n"
+            f"3. Return ONLY valid JSON (no commentary, no markdown ticks)."
+        )
+
+        messages = [{"role": "user", "content": prompt}]
+
+        try:
+            if hasattr(agent, "client") and hasattr(agent.client, "complete"):
+                reply = agent.client.complete(messages, [])
+                content = reply.content or "{}"
+            elif hasattr(agent, "client") and hasattr(agent.client, "chat"):
+                resp = agent.client.chat.completions.create(
+                    model=getattr(agent, "model", "gpt-4o-mini"),
+                    messages=messages,
+                    temperature=0.0,
+                    max_tokens=150,
                 )
-                if not success:
-                    continue
-                # Reliability check
-                if self.reliability_model:
-                    feats = self.reliability_model.extract_features(0.85, 0.0, 1, len(params), True)
-                    prob, _ = self.reliability_model.predict_probability(feats)
-                    if not self.reliability_model.is_reliable(prob):
-                        continue
-
-                return self._execute_calls(agent, bound_calls, tool_summaries, calls, log, request, context_summary)
+                content = resp.choices[0].message.content or "{}"
             else:
-                pass_neg, _ = check_negative_constraints(request, entry.original_request)
-                if pass_neg:
-                    return self._execute_calls(agent, entry.tool_calls, tool_summaries, calls, log, request, context_summary)
+                return None
 
-        return False, None
+            content = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            data = json.loads(content)
+            if not isinstance(data, dict) or data.get("reject"):
+                return None
+            return data
+        except Exception:
+            return None
 
     def _execute_calls(
         self,
