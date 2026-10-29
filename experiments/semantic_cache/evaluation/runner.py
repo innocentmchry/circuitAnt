@@ -135,8 +135,11 @@ class ExperimentRunner:
             f"User Request: \"{request_prompt}\"\n\n"
             f"Instructions:\n"
             f"1. Extract arguments for the tool(s) from the user request.\n"
-            f"2. Pay close attention to parameter types, names, and docstrings.\n"
-            f"   (e.g., outputs are 'sink', inputs/flip-flops are 'source', 'direction' is 'fanin' or 'fanout').\n"
+            f"2. Pay close attention to parameter types, names, docstrings, and standard EDA endpoints:\n"
+            f"   - For register-to-register paths: source='ANY_DFF_Q', sink='ANY_DFF_D'.\n"
+            f"   - For primary inputs to outputs: source='ANY_PI', sink='ANY_PO'.\n"
+            f"   - For logic depth of an output signal: source='ANY_START', sink=<output_signal>.\n"
+            f"   - For get_cone directions: direction is 'fanin' or 'fanout'.\n"
             f"3. If the request contradicts the tools or required info is missing, return {{\"reject\": true}}.\n"
             + (f"4. Return strictly a JSON list of objects: [{{\"tool\": \"...\", \"args\": {{...}}}}, ...]" if is_multi else
                f"4. Return strictly a JSON object of arguments: {{\"param\": value, ...}}")

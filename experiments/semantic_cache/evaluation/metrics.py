@@ -19,6 +19,29 @@ def canonicalize_args(tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
         for k, v in TOOL_DEFAULTS[tool].items():
             if k not in c and v is not None:
                 c[k] = v
+    # Normalize circuit endpoint aliases
+    if "source" in c and isinstance(c["source"], str):
+        s_lower = c["source"].strip().lower()
+        if s_lower in ("register", "reg", "dff", "flip-flop", "flip_flop"):
+            c["source"] = "ANY_DFF_Q"
+        elif s_lower in ("pi", "primary_input", "inputs"):
+            c["source"] = "ANY_PI"
+        elif s_lower in ("start", "any"):
+            c["source"] = "ANY_START"
+
+    if "sink" in c and isinstance(c["sink"], str):
+        s_lower = c["sink"].strip().lower()
+        if s_lower in ("register", "reg", "dff", "flip-flop", "flip_flop"):
+            c["sink"] = "ANY_DFF_D"
+        elif s_lower in ("po", "primary_output", "outputs"):
+            c["sink"] = "ANY_PO"
+        elif s_lower in ("end", "any"):
+            c["sink"] = "ANY_END"
+
+    if tool == "get_max_depth" and c.get("source") and c.get("sink") and c["source"] == c["sink"] and not c["source"].startswith("ANY_"):
+        # When an output signal was extracted to both source and sink, fanin starts at ANY_START
+        c["source"] = "ANY_START"
+
     # Normalize paths and strings: resolve redundant ./ or .\ segments
     for k, v in list(c.items()):
         if isinstance(v, str):
