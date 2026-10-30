@@ -1,0 +1,17 @@
+experiment_id: E7
+strategy: generalized_light_llm
+exact_enabled: true
+embedding_enabled: true
+embedding_model: all-MiniLM-L6-v2
+retrieval_top_k: 5
+cosine_threshold: 0.82
+light_llm_enabled: true
+light_llm_model: gpt-4o-mini
+structural_validation_enabled: true
+parameter_substitution_enabled: false
+reranker_enabled: false
+reliability_enabled: false
+random_seed: 42
+cache_capacity: null
+results_dir: c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/experiments/semantic_cache/results
+dataset_path: c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/experiments/semantic_cache/data/benchmark_traces.jsonl

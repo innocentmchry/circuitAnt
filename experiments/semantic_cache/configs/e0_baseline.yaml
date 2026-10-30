@@ -1,0 +1,11 @@
+experiment_id: E0
+strategy: original_llm
+exact_enabled: false
+embedding_enabled: false
+reranker_enabled: false
+structural_validation_enabled: false
+reliability_enabled: false
+random_seed: 42
+cache_capacity: null
+results_dir: experiments/semantic_cache/results
+dataset_path: experiments/semantic_cache/data/benchmark_traces.jsonl
