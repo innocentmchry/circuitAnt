@@ -43,13 +43,15 @@ class Agent:
 
     def __init__(self, api_key: str, model: str, developer: dict | None = None,
                  design: dict | None = None, output_dir: str | Path = ".", provider: str = "openai",
-                 cache: bool = True, price: dict | None = None, access: dict | None = None) -> None:
+                 cache: bool = True, price: dict | None = None, access: dict | None = None,
+                 cache_config: dict | None = None) -> None:
         """provider: "openai" or "claude" (see llm.py); cache: use the provider's prompt cache;
         price: USD per 1M tokens (see llm.Usage.costs), for the cost columns of the run analysis;
         access: the config's `tools` section (how the model reaches the tools, see tool_access);
         developer: the config's `developer` section ({"mode": bool, "log_dir": path});
         design: its `design` section (how netlists are read, see design_io.read_design);
-        output_dir: where testcase logs, written designs and result lists go."""
+        output_dir: where testcase logs, written designs and result lists go;
+        cache_config: optional caching configuration."""
         self.client = PROVIDERS[provider](api_key, model, cache)
         self.price = price
         self.model = model
@@ -70,6 +72,15 @@ class Agent:
         else:
             self.logs_dir = Path(".")  # unused
             self.Logger = NoopLogger
+
+        # Semantic tool-call cache
+        self.cache_manager = None
+        if cache_config and cache_config.get("enabled"):
+            try:
+                from agent.cache import AgentCacheManager
+                self.cache_manager = AgentCacheManager(cache_config)
+            except Exception as exc:
+                print(f"[WARNING] Failed to initialize AgentCacheManager: {exc}")
 
     # -- context between requests ---------------------------------------------
 
@@ -114,7 +125,26 @@ class Agent:
             tool_summaries, calls, ops, usage, trace = [], [], [], Usage(), []
             started = time.monotonic()
             try:
-                answer = self._answer(request, context_summary, tool_summaries, calls, ops, usage, log, trace)
+                cached_hit, answer = False, None
+                if self.cache_manager:
+                    try:
+                        cached_hit, answer = self.cache_manager.try_execute_cached_plan(
+                            self, request, context_summary, tool_summaries, calls, log
+                        )
+                        if cached_hit:
+                            trace.append("cache: hit (LLM planning bypassed)")
+                    except Exception as exc:
+                        log.log_tool_result("cache_error", f"{type(exc).__name__}: {exc}")
+                        cached_hit = False
+
+                if not cached_hit:
+                    answer = self._answer(request, context_summary, tool_summaries, calls, ops, usage, log, trace)
+                    if self.cache_manager and answer and not answer.startswith("[ERROR]"):
+                        try:
+                            self.cache_manager.update_on_success(request, self.tools.case or self.case, calls, context_summary)
+                        except Exception:
+                            pass
+
                 self._remember(request, tool_summaries)
                 log.log_final_response(answer)
                 return answer

@@ -1,0 +1,17 @@
+experiment_id: E5
+strategy: semantic_both
+exact_enabled: true
+embedding_enabled: true
+embedding_model: all-MiniLM-L6-v2
+retrieval_top_k: 5
+cosine_threshold: 0.75
+reranker_enabled: true
+reranker_model: cross-encoder/ms-marco-MiniLM-L6-v2
+reranker_threshold: -4.0
+structural_validation_enabled: true
+parameter_substitution_enabled: true
+reliability_enabled: false
+random_seed: 42
+cache_capacity: null
+results_dir: experiments/semantic_cache/results
+dataset_path: experiments/semantic_cache/data/benchmark_traces.jsonl

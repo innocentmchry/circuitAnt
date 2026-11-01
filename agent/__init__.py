@@ -7,4 +7,7 @@
 
 eda_engine/ (the netlist engine) knows nothing about this package.
 """
-from agent.agent import Agent
+try:
+    from agent.agent import Agent
+except ImportError:
+    pass
