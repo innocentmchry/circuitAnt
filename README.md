@@ -90,12 +90,14 @@ git clone https://github.com/berkeley-abc/abc.git ~/abc && make -C ~/abc -j"$(np
 
 The scripts look for it at `~/abc/abc`; if yours is elsewhere, set `ABC_BIN` (step 4).
 
-**3. Python packages** ([requirements.txt](requirements.txt): `openai`, `anthropic`, `rdflib`, `pyyaml`). They must
+**3. Python packages** ([requirements.txt](requirements.txt): `openai`, `anthropic`, `rdflib`, `pyyaml`;
+`sentence-transformers` and `pillow` only for the cache). They must
 go into the Python that OpenROAD embeds — the system Python 3, not a virtual
 environment or a uv/conda Python, which OpenROAD would not see:
 
 ```bash
 echo 'import sys; print(sys.prefix, sys.version.split()[0])' | ./openroad_python.sh /dev/stdin   # which Python OpenROAD uses (here: /usr 3.10.12)
+/usr/bin/python3 -m pip install --user torch --index-url https://download.pytorch.org/whl/cpu   # only for the cache: CPU torch (~200 MB, not the 2.5 GB CUDA build)
 /usr/bin/python3 -m pip install --user -r requirements.txt
 ```
 
@@ -110,9 +112,9 @@ export ABC_BIN=/path/to/abc/abc
 `circuitant`, `run.sh` and `openroad_python.sh` read these (falling back to the default
 locations above) and fail with `missing <path>` if OpenROAD is not found.
 
-**The cache's embedding model** (only for `cache.enabled: true`). The cache needs
-`sentence-transformers` (with torch), which is easiest to install in a conda env; point
-OpenROAD's Python at that env's packages (in `~/.zshrc` or `~/.bashrc`):
+**The cache's packages from a conda env instead** (only for `cache.enabled: true`). If
+`sentence-transformers` is installed in a conda env rather than by step 3, point OpenROAD's
+Python at that env's packages (in `~/.zshrc` or `~/.bashrc`):
 
 ```bash
 conda create -n iccad2026 python=3.10 && conda activate iccad2026   # the same Python version as OpenROAD's

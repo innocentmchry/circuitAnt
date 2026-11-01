@@ -5,3 +5,6 @@ openai>=1.0     # OpenAI client (OpenAI() / chat.completions); tested with 3.26.
 anthropic       # Claude client (Anthropic().messages), only for provider: claude; tested with 2.3.0
 rdflib          # tool knowledge graph (tools.access: graph); tested with 7.6.0
 pyyaml>=5.4     # config.yaml; tested with 5.4.1
+sentence-transformers  # the cache's embedding model, only for cache.enabled: true (pulls in torch:
+                       # install the CPU build first, see README.md); tested with 6.2.0
+pillow>=9.1            # needed by transformers (the system Pillow 9.0.1 is too old); only for the cache
