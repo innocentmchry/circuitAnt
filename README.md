@@ -213,6 +213,9 @@ temporary keyword `search_tools` (off by default) ranks a prompt's expected tool
 requests of testcases 1-50 through the cache, without an LLM, and reports the hit rate and how
 often the cached tool is the one the LLM chose, per `cosine_threshold` (0.70-0.90). The other
 configs in `experiments/semantic_cache/configs/` are PR #3's ablation (E0-E7).
+`experiments/semantic_cache/model_comparison.py` compares embedding models (hit rate at a given
+share of right tools on testcases 1-50, and a probe of opposite-word pairs); all-MiniLM-L6-v2 stays
+the default.
 
 **Run one prompt file, or type requests**
 

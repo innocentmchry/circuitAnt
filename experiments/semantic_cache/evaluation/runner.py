@@ -6,10 +6,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from agent.cache import CacheDecision, CandidateMatch, ToolCall, SemanticCacheStore
 from agent.cache.models.embeddings import EmbeddingModel
-from agent.cache.validation.constants import OPPOSITE_PAIRS
-from agent.cache.validation.polarity import check_negative_constraints
 from ..models.reliability import ReliabilityModel
 from ..models.reranker import CrossEncoderReranker
+from ..validation.constants import OPPOSITE_PAIRS
+from ..validation.polarity import check_negative_constraints
 from ..validation.structural import StructuralValidator
 from ..data.loader import load_dataset
 from .logger import ExperimentLogger

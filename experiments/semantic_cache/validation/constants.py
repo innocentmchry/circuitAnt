@@ -1,5 +1,26 @@
-"""Constants of the regex extraction and template binding (experiments E4-E6)."""
-from agent.cache.validation.constants import OPPOSITE_PAIRS  # noqa: F401  (re-exported)
+"""Constants of the opposite-word check and of the regex extraction and template binding (PR #3's
+experiments; the agent's cache uses none of them)."""
+# Opposite-word pairs: if request and candidate disagree on any pair, reject candidate.
+OPPOSITE_PAIRS = [
+    ("max", "min"),
+    ("maximum", "minimum"),
+    ("highest", "lowest"),
+    ("deepest", "shallowest"),
+    ("increase", "decrease"),
+    ("with", "without"),
+    ("count", "list"),
+    ("how many", "list"),
+    ("fewest", "most"),
+    ("fanin", "fanout"),
+    ("input", "output"),
+    ("before", "after"),
+    ("greater", "less"),
+    ("above", "below"),
+    ("source", "sink"),
+    ("longest", "shortest"),
+    ("read", "modify"),
+    ("add", "remove"),
+]
 
 # Mutating tools that alter design netlist state.
 MUTATING_TOOLS = {

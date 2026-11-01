@@ -9,10 +9,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from agent.cache.entry import ToolCall
 from agent.cache.store import SemanticCacheStore
 from agent.cache.models.embeddings import EmbeddingModel
-from agent.cache.validation.constants import OPPOSITE_PAIRS
-from agent.cache.validation.polarity import check_negative_constraints
 from .models.reliability import ReliabilityModel
 from .models.reranker import CrossEncoderReranker
+from .validation.constants import OPPOSITE_PAIRS
+from .validation.polarity import check_negative_constraints
 from .validation.structural import StructuralValidator
 
 

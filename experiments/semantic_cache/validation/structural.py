@@ -5,7 +5,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from agent.cache.entry import ToolCall
-from agent.cache.validation.polarity import check_negative_constraints
+from .polarity import check_negative_constraints
 from .constants import CLASS_KEYWORDS, GATE_TYPES, MUTATING_TOOLS, OPPOSITE_PAIRS
 from .extractor import ExtractedEntities, extract_entities
 

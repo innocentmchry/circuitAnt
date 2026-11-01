@@ -16,8 +16,8 @@ if 'odb' not in sys.modules:
 
 from agent.cache import CacheDecision, CacheEntry, CandidateMatch, ToolCall, SemanticCacheStore
 from agent.cache.models.embeddings import cosine_similarity
-from agent.cache.validation.constants import OPPOSITE_PAIRS
-from agent.cache.validation.polarity import check_negative_constraints
+from experiments.semantic_cache.validation.constants import OPPOSITE_PAIRS
+from experiments.semantic_cache.validation.polarity import check_negative_constraints
 from experiments.semantic_cache.models.reliability import ReliabilityModel
 from experiments.semantic_cache.validation.extractor import extract_entities
 from experiments.semantic_cache.validation.structural import StructuralValidator

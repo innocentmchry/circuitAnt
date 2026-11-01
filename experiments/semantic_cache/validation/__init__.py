@@ -1,6 +1,7 @@
 from .constants import CLASS_KEYWORDS, GATE_TYPES, MUTATING_TOOLS, OPPOSITE_PAIRS
 from .extractor import ExtractedEntities, extract_entities
-from .structural import StructuralValidator, check_negative_constraints
+from .polarity import check_negative_constraints
+from .structural import StructuralValidator
 
 __all__ = [
     "OPPOSITE_PAIRS",

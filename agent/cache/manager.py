@@ -1,10 +1,12 @@
 """The cache the agent uses: the requests answered so far, with the engine tools each one ran.
 
 A new request is embedded and compared with them.  When the most similar one is close enough
-(cosine_threshold) and the two do not disagree on an opposite-word pair (fanin / fanout, count /
-list, ... see validation/constants.py), the request is a hit: the agent starts it with a short first
-LLM turn that offers only the tools that request ran (see agent.Agent._answer).  The cache chooses
-tools only; the model writes their arguments from the new request.
+(cosine_threshold), the request is a hit: the agent starts it with a short first LLM turn that offers
+only the tools that request ran (see agent.Agent._answer).  The cache chooses tools only; the model
+writes their arguments from the new request, so requests that differ in an argument (fanin / fanout,
+max / min, another signal) may share a cache entry, and the model can decline tools that do not fit.
+There is no hand-written check for opposite words: on the recorded requests it lost hits without
+making them more often right (experiments/semantic_cache/model_comparison.py).
 
 The cache is shared by the testcases of a run: run.sh starts one process per testcase, so each
 process loads the run's cache file (debugging/logs/<run>/cache.json) and saves it after every
@@ -23,7 +25,6 @@ from pathlib import Path
 from .entry import CacheEntry, ToolCall
 from .models.embeddings import EmbeddingModel
 from .store import SemanticCacheStore
-from .validation.polarity import check_negative_constraints
 
 DEFAULT_MODEL = "all-MiniLM-L6-v2"
 DEFAULT_THRESHOLD = 0.80
@@ -95,10 +96,6 @@ class AgentCacheManager:
         found = Lookup(self.store.entries[entry_id], similarity)
         if similarity < self.threshold:
             found.rejected = f"similarity {similarity:.3f} below {self.threshold}"
-        else:
-            agree, reason = check_negative_constraints(request, found.entry.original_request)
-            if not agree:
-                found.rejected = reason
         return found
 
     def record(self, request: str, case: str, calls: list[tuple[str, dict]]) -> None:
