@@ -1,14 +1,19 @@
+"""Archived: PR #3's live cache, which on a hit extracted arguments with a side LLM prompt, ran the
+tools outside the agent loop and wrote the answer with a second side prompt (experiment E7, live).
+Not used by the agent any more: agent/cache/manager.py shortens the first turn of the agent loop
+instead.  Kept for reference and comparison."""
 import json
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
-from .entry import ToolCall
-from .store import SemanticCacheStore
-from .models.embeddings import EmbeddingModel
+from agent.cache.entry import ToolCall
+from agent.cache.store import SemanticCacheStore
+from agent.cache.models.embeddings import EmbeddingModel
+from agent.cache.validation.constants import OPPOSITE_PAIRS
+from agent.cache.validation.polarity import check_negative_constraints
 from .models.reliability import ReliabilityModel
 from .models.reranker import CrossEncoderReranker
-from .validation.constants import OPPOSITE_PAIRS
-from .validation.structural import StructuralValidator, check_negative_constraints
+from .validation.structural import StructuralValidator
 
 
 class AgentCallWrapper:

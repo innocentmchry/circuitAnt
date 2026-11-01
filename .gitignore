@@ -19,3 +19,9 @@ testcase*
 document*
 experiments/results/
 
+eval/
+*.sqlite
+*_latest.csv
+
+# Raw semantic cache run logs (intermediate jsonl dumps)
+experiments/semantic_cache/results/E*_*
