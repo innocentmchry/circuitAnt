@@ -1,10 +1,11 @@
 """Mode "all": every public Tools method is offered to the model as a tool and run directly."""
 import inspect
 import json
+import typing
 from dataclasses import dataclass
 from pathlib import Path
 
-from agent.tools import Tools, schema
+from agent.tools import Tools, parameter, schema
 
 MAX_RESULT_CHARS = 20000
 
@@ -61,6 +62,8 @@ class DirectAccess:
             args = json.loads(arguments or "{}")
             fn = self.functions[name]
             wrong = argument_problems(fn, args)
+            if not wrong:
+                args, wrong = typed_arguments(fn, args)
             if wrong:
                 return json.dumps({"error": f"{name} not run: " + "; ".join(wrong)})
             for arg in getattr(fn, "grounded", ()):  # must be named by the request itself
@@ -90,3 +93,27 @@ def argument_problems(fn, args: dict) -> list[str]:
     problems += [f"missing required argument {n!r}" for n, p in params.items()
                  if p.default is p.empty and n not in args]
     return problems + [f"its arguments are: {listing}"] if problems else []
+
+
+def typed_arguments(fn, args: dict) -> tuple[dict, list[str]]:
+    """The arguments with the types the tool declares, and what cannot be converted ([] if nothing).  A
+    boolean or integer written as text ("true", "4") is converted: in graph mode run_tool's arguments are
+    a free object whose types nothing enforces, and any non-empty text is true in Python, so
+    collapse="False" would collapse."""
+    hints = typing.get_type_hints(fn, include_extras=True)
+    typed, problems = dict(args), []
+    for name, value in args.items():
+        base, _ = parameter(hints[name])
+        if value is None or base is str:
+            continue
+        if base is bool:
+            if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+                typed[name] = value.strip().lower() == "true"
+            elif not isinstance(value, bool):
+                problems.append(f"{name} must be true or false, not {value!r}")
+        elif base is int:
+            if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+                typed[name] = int(value)
+            elif isinstance(value, bool) or not isinstance(value, int):
+                problems.append(f"{name} must be an integer, not {value!r}")
+    return typed, problems

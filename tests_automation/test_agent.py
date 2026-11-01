@@ -147,6 +147,20 @@ class AgentLoop(unittest.TestCase):
         agent.ask("Start testcase t1 again.")
         self.assertIn("kept", (Path(self.tmp.name) / "t1.log").read_text())
 
+    def test_booleans_written_as_text_are_converted(self):
+        # graph-mode run_tool arguments are not type-checked: collapse="false" must not collapse
+        patterns = str(HERE / "patterns.v")
+        agent = self.agent([[("read_design", {"path": patterns})], "loaded",
+                            [("find_inverter_pairs", {"collapse": "false"})],
+                            [("find_inverter_pairs", {"collapse": "maybe"})],
+                            [("find_inverter_pairs", {"collapse": "True"})], "done"])
+        agent.ask(f"load {patterns}")
+        agent.ask("find the inverter pairs, then collapse them")
+        results = [json.loads(m["content"]) for m in agent.client.sent[-1][0] if m["role"] == "tool"]
+        self.assertIn("count", results[0]["result"])  # reported, design unchanged
+        self.assertIn("must be true or false", results[1]["error"])
+        self.assertIn("pairs_collapsed", results[2]["result"])  # collapsed
+
     # -- the cache ----------------------------------------------------------------
 
     def cached_agent(self, last_turns: list, access: dict | None = None, load=None) -> Agent:
