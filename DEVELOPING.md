@@ -62,6 +62,7 @@ blif.py                         BLIF and running ABC
    ▲   (eda_engine/ never imports from agent/)
 agent/                          the LLM side
   tools.py                      one method per agent tool, forwarding to the engine
+  cache/                        tools chosen from similar earlier requests (config cache)
   tool_access/                  how the model reaches those tools (config tools.access)
     graph/                      the tool knowledge graph, built from tools.py + knowledge.ttl
   llm.py                        the chat-model clients (OpenAI, Claude)
@@ -223,6 +224,12 @@ an engine exporter; the tool knowledge graph is in `agent/tool_access/graph/`.
 
 * The system prompt (`agent/agent.py`) is short and generic: rules that hold for every
   request. No testcase-specific or tool-specific routing there.
+* One exception: the short first turn of a cache hit (`CACHE_PROMPT`, `agent/cache/`) names
+  the tools of a similar earlier request and shows that request's calls. They come from the
+  run's own recorded requests, not from hand-written routing, and only turn 1 sees them; from
+  turn 2 the request runs the normal loop with the full prompt. The cache chooses tools only:
+  the model writes the arguments from the request. Wrong choices are not prevented but
+  measured (the run analysis's `cache*` columns against `tool_called`).
 * Tool choice is steered by tool docstrings and argument defaults; answers from
   history are made reliable by complete history lines.
 * The model answers from history only when the history states the exact value;
@@ -268,6 +275,9 @@ an engine exporter; the tool knowledge graph is in `agent/tool_access/graph/`.
   them). One config per arm in `experiments/configs/` (`CIRCUITANT_CONFIG`), differing
   only in what is compared; name runs with `CIRCUITANT_RUN`; summarise with
   `experiments/compare_runs.py`.
+* The cache's threshold is tuned offline on testcases 1-50
+  (`experiments/semantic_cache/run_experiments.py --sweep`); compare `cache.enabled` false vs
+  true by live runs on 51-100.
 * Every developer-mode run writes `debugging/run_info_<run>.json` (settings and git
   commit); keep it with the run's CSV.
 * A restructuring that should not change behaviour is checked by comparing the request

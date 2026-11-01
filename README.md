@@ -38,6 +38,7 @@ circuitAnt/
 │   ├── agent.py            the LLM loop: system prompt, history summaries, tool calls
 │   ├── llm.py              the chat-model clients (OpenAI, Claude) behind one interface
 │   ├── tools.py            the tools offered to the model (one method each) + schema generator
+│   ├── cache/              tools chosen from similar earlier requests (config cache.enabled)
 │   └── tool_access/        how the model reaches the tools (config tools.access)
 │       ├── direct.py       access "all": every tool schema with every LLM call
 │       └── graph/          the tool knowledge graph (RDF): ontology.ttl, knowledge.ttl, build.py
@@ -109,6 +110,19 @@ export ABC_BIN=/path/to/abc/abc
 `circuitant`, `run.sh` and `openroad_python.sh` read these (falling back to the default
 locations above) and fail with `missing <path>` if OpenROAD is not found.
 
+**The cache's embedding model** (only for `cache.enabled: true`). The cache needs
+`sentence-transformers` (with torch), which is easiest to install in a conda env; point
+OpenROAD's Python at that env's packages (in `~/.zshrc` or `~/.bashrc`):
+
+```bash
+conda create -n iccad2026 python=3.10 && conda activate iccad2026   # the same Python version as OpenROAD's
+pip install sentence-transformers pillow
+export CIRCUITANT_PYTHONPATH=$HOME/anaconda3/envs/iccad2026/lib/python3.10/site-packages
+```
+
+`circuitant` and `openroad_python.sh` add `CIRCUITANT_PYTHONPATH` to OpenROAD's `PYTHONPATH`
+only. The model (`all-MiniLM-L6-v2`, about 90 MB) is downloaded on first use.
+
 **5. The OpenAI API key** (below), then check the installation:
 
 ```bash
@@ -150,6 +164,7 @@ Relative paths are relative to `config.yaml`.
 | `design.lef`, `design.liberty` | generic only: the netlist's LEF files (technology LEF first) and Liberty files |
 | `tools.access` | how the model reaches the tools: `all` = every tool schema with every LLM call; `graph` = the session tools directly, the others through the tool knowledge graph (see `agent/tool_access/`) |
 | `tools.graph.core`, `.catalog`, `.sparql`, `.search`, `.knowledge` | graph mode only: tools offered directly (default `[]`: every tool through the graph; e.g. the 3 session tools); catalog in the system prompt: `names` (default, one tool name per line) or `summaries` (each with its one-line summary); also offer read-only SPARQL (default false); `search`: the temporary keyword `search_tools`, keep off (default false; to be replaced by embedding search); include `knowledge.ttl` concepts and `followedBy` (default true) |
+| `cache.enabled` | `true`: a request similar to an earlier one (`cache.cosine_threshold`, default 0.80, with `cache.embedding_model`) starts with a short first LLM turn that offers only the tools that request ran; the model writes the arguments, and the normal loop continues from turn 2 (see `agent/cache/manager.py`). In graph mode a hit usually takes 2 LLM calls instead of 3. The run analysis shows what the cache did (`cache`, `cache_tool`, `cache_similarity`, `cache_match`) |
 | `developer.mode` | `true`: per-request logs, the tool-call CSV and the run's settings (`run_info_<run>.json`) are written |
 | `developer.log_dir` | optional: put `logs/<run>/` somewhere else than `debugging/` |
 
@@ -192,6 +207,10 @@ differ from `config.yaml` only in `tools` and their output folder
 (`experiments/results/output_<mode>/`); keep them in step with it (provider, model, prices).
 `./openroad_python.sh experiments/search_recall.py` measures, without an LLM, how often the
 temporary keyword `search_tools` (off by default) ranks a prompt's expected tool near the top.
+`./openroad_python.sh experiments/semantic_cache/run_experiments.py --sweep` replays recorded
+requests of testcases 1-50 through the cache, without an LLM, and reports the hit rate and how
+often the cached tool is the one the LLM chose, per `cosine_threshold` (0.70-0.90). The other
+configs in `experiments/semantic_cache/configs/` are PR #3's ablation (E0-E7).
 
 **Run one prompt file, or type requests**
 
