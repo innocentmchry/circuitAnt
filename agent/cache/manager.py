@@ -16,6 +16,7 @@ and embedding (the vector the similarity is computed from, rounded to 6 decimals
   cosine_threshold  the similarity a hit needs (default 0.80)
 """
 import json
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,14 +71,18 @@ class AgentCacheManager:
                               embedding=e["embedding"])
 
     def save(self) -> None:
-        """Write the whole cache to the file (via a temporary file, so a crash leaves the old one)."""
+        """Write the whole cache to the file (via a temporary file, so a crash leaves the old one).
+        Indented to be read, except each embedding, which stays on one line at the end of its entry."""
         if not self.path:
             return
-        data = [{"id": e.request_id, "testcase": e.testcase, "request": e.original_request,
-                 "calls": [c.to_dict() for c in e.tool_calls], "embedding": [round(x, 6) for x in e.embedding]}
-                for e in self.store.get_all_entries()]
+        entries = []
+        for e in self.store.get_all_entries():
+            text = json.dumps({"id": e.request_id, "testcase": e.testcase, "request": e.original_request,
+                               "calls": [c.to_dict() for c in e.tool_calls]}, indent=2)
+            embedding = json.dumps([round(x, 6) for x in e.embedding])
+            entries.append(textwrap.indent(f'{text[:-2]},\n  "embedding": {embedding}\n}}', "  "))
         temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(data))
+        temporary.write_text("[\n" + ",\n".join(entries) + "\n]\n")
         temporary.replace(self.path)
 
     def lookup(self, request: str) -> Lookup:
