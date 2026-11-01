@@ -53,9 +53,22 @@ def main():
     ap = argparse.ArgumentParser(description="CircuitAnt Semantic Cache Experiment Runner")
     ap.add_argument("-config", help="Path to experiment config YAML")
     ap.add_argument("--all", action="store_true", help="Run all ablation experiments E0 through E6")
+    ap.add_argument("--sweep", action="store_true",
+                    help="Run the E2 threshold sweep (configs/e2_sweep/, testcases 1-50) for the agent's cache")
     args = ap.parse_args()
 
-    if args.all:
+    if args.sweep:
+        rows = []
+        for c in sorted((HERE / "configs" / "e2_sweep").glob("*.yaml")):
+            cfg = yaml.safe_load(c.read_text())
+            m = run_single_config(str(c))
+            rows.append((cfg["cosine_threshold"], m["total_requests"], m["hit_rate_pct"], m["tool_choice_pct"],
+                         m["reference_agreement_pct"]))
+        print("\n| threshold | requests | hit rate % | right tool % of hits | whole plan agrees % of hits |")
+        print("| --- | --- | --- | --- | --- |")
+        for row in rows:
+            print("| " + " | ".join(str(v) for v in row) + " |")
+    elif args.all:
         configs = [
             "experiments/semantic_cache/configs/e0_baseline.yaml",
             "experiments/semantic_cache/configs/e1_exact.yaml",

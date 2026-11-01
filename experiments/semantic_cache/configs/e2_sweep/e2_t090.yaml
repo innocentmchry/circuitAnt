@@ -1,0 +1,18 @@
+# E2 threshold sweep for the agent's cache: top-1 embedding match + opposite-word check, scored on the
+# tool chosen (tool_choice_pct).  Tuning set: testcases 1-50 (51-100 are held out, see DEVELOPING.md).
+experiment_id: E2_t090
+strategy: semantic
+exact_enabled: true
+embedding_enabled: true
+embedding_model: all-MiniLM-L6-v2
+retrieval_top_k: 1
+cosine_threshold: 0.90
+reranker_enabled: false
+structural_validation_enabled: false
+reliability_enabled: false
+insert_on_hit: true
+testcases: [1, 50]
+random_seed: 42
+cache_capacity: null
+results_dir: experiments/results/semantic_cache_sweep
+dataset_path: experiments/semantic_cache/data/benchmark_traces.jsonl

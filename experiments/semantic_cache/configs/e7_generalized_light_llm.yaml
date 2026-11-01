@@ -13,5 +13,5 @@ reranker_enabled: false
 reliability_enabled: false
 random_seed: 42
 cache_capacity: null
-results_dir: c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/experiments/semantic_cache/results
-dataset_path: c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/experiments/semantic_cache/data/benchmark_traces.jsonl
+results_dir: experiments/semantic_cache/results
+dataset_path: experiments/semantic_cache/data/benchmark_traces.jsonl

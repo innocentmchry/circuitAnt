@@ -19,7 +19,7 @@ from .metrics import compute_metrics, plans_agree
 def _load_tools_ast_metadata() -> Dict[str, Dict[str, Any]]:
     """Dynamically parses agent/tools.py using AST to extract signatures, types, and docstrings."""
     import ast
-    for path_cand in ("agent/tools.py", "../../agent/tools.py", "c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/agent/tools.py"):
+    for path_cand in (Path(__file__).resolve().parents[3] / "agent" / "tools.py",):
         pth = Path(path_cand)
         if pth.exists():
             try:
@@ -99,16 +99,6 @@ class ExperimentRunner:
 
 
     def _load_api_key(self) -> Optional[str]:
-        for env_path in ("../../.env", ".env", "c:/Users/lavan/Desktop/Sem7/BTP/ICCAD2026/circuitAnt/.env"):
-            p = Path(env_path)
-            if p.exists():
-                raw = p.read_text(encoding="utf-8", errors="ignore").strip()
-                if "=" in raw:
-                    for line in raw.splitlines():
-                        if "OPENAI_API_KEY" in line:
-                            return line.partition("=")[2].strip("'\" \r\n")
-                elif raw.startswith("sk-"):
-                    return raw
         return os.environ.get("OPENAI_API_KEY")
 
     def _call_light_llm_extract_plan(self, candidate_tool_calls: List[ToolCall], request_prompt: str) -> Tuple[Optional[List[ToolCall]], int]:
@@ -481,6 +471,10 @@ class ExperimentRunner:
     def run_replay(self, dataset_path: str) -> Dict[str, Any]:
         """Run sequential replay on benchmark traces."""
         traces = load_dataset(dataset_path)
+        span = self.config.get("testcases")  # [first, last]: only these testcases (e.g. [1, 50] to tune)
+        if span:
+            number = lambda case: int("".join(ch for ch in case if ch.isdigit()) or 0)
+            traces = [tr for tr in traces if span[0] <= number(tr["testcase"]) <= span[1]]
         request_records: List[Dict[str, Any]] = []
 
         total_traces = len(traces)
@@ -503,16 +497,19 @@ class ExperimentRunner:
 
             # Check agreement with LLM reference if HIT
             agreement = None
+            tool_agreement = None
             proposed_calls_dict = []
             if decision.accepted and decision.tool_calls:
                 proposed_calls_dict = [tc.to_dict() for tc in decision.tool_calls]
                 agreement = plans_agree(proposed_calls_dict, ref_calls)
+                tool_agreement = (proposed_calls_dict[0]["tool"] == ref_calls[0]["tool"]) if ref_calls else None
                 self.store.record_hit(decision.selected_candidate.entry.entry_id, req_id)
             else:
                 self.store.record_miss(req_id, decision.reason)
 
-            # Fallback handling & Dynamic Cache Insertion
-            if not decision.accepted:
+            # Fallback handling & Dynamic Cache Insertion (insert_on_hit: every answered request is
+            # cached, as the agent's cache does)
+            if not decision.accepted or self.config.get("insert_on_hit", False):
                 # LLM planning is invoked. We insert the reference plan into cache!
                 ref_tool_objs = [ToolCall.from_dict(tc) for tc in ref_calls]
                 emb = None
@@ -557,6 +554,7 @@ class ExperimentRunner:
                 "accepted": decision.accepted,
                 "reason": decision.reason,
                 "agreement": agreement,
+                "tool_agreement": tool_agreement,
                 "selected_candidate_id": decision.selected_candidate.entry.entry_id if decision.selected_candidate else None,
                 "proposed_tool_calls": proposed_calls_dict,
                 "reference_tool_calls": ref_calls,

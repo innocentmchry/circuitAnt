@@ -38,10 +38,6 @@ def canonicalize_args(tool: str, args: Dict[str, Any]) -> Dict[str, Any]:
         elif s_lower in ("end", "any"):
             c["sink"] = "ANY_END"
 
-    if tool == "get_max_depth" and c.get("source") and c.get("sink") and c["source"] == c["sink"] and not c["source"].startswith("ANY_"):
-        # When an output signal was extracted to both source and sink, fanin starts at ANY_START
-        c["source"] = "ANY_START"
-
     # Normalize paths and strings: resolve redundant ./ or .\ segments
     for k, v in list(c.items()):
         if isinstance(v, str):
@@ -124,6 +120,12 @@ def compute_metrics(request_records: List[Dict[str, Any]], total_requests: int) 
             disagreements += 1
     # ----------------------------------------------------------
 
+    # Tool choice: the cache's first tool is the LLM's first tool (what the agent's cache decides;
+    # the model writes the arguments itself)
+    tool_scored = [r for r in request_records if r.get("accepted") and r.get("tool_agreement") is not None]
+    tool_agreements = sum(1 for r in tool_scored if r["tool_agreement"])
+    tool_choice_pct = (tool_agreements / len(tool_scored) * 100.0) if tool_scored else 0.0
+
     agreement_rate = (agreements / hits * 100.0) if hits > 0 else 0.0
     false_hit_proxy_rate = (disagreements / hits * 100.0) if hits > 0 else 0.0
 
@@ -165,6 +167,8 @@ def compute_metrics(request_records: List[Dict[str, Any]], total_requests: int) 
         "agreements": agreements,
         "disagreements": disagreements,
         "reference_agreement_pct": round(agreement_rate, 2),
+        "tool_agreements": tool_agreements,
+        "tool_choice_pct": round(tool_choice_pct, 2),
         "false_hit_proxy_rate_pct": round(false_hit_proxy_rate, 2),
         "total_prompt_tokens_saved": total_prompt_tokens_saved,
         "total_completion_tokens_saved": total_completion_tokens_saved,
