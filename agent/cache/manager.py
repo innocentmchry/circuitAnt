@@ -6,12 +6,18 @@ list, ... see validation/constants.py), the request is a hit: the agent starts i
 LLM turn that offers only the tools that request ran (see agent.Agent._answer).  The cache chooses
 tools only; the model writes their arguments from the new request.
 
-The cache lives in memory and fills during a run.  Config section `cache`:
+The cache is shared by the testcases of a run: run.sh starts one process per testcase, so each
+process loads the run's cache file (debugging/logs/<run>/cache.json) and saves it after every
+request it adds; a new run starts empty.  Per request the file holds its text, testcase, engine calls
+and embedding (the vector the similarity is computed from, rounded to 6 decimals).  Config section
+`cache`:
   enabled           false: the agent runs without it (no import, no model)
   embedding_model   sentence-transformers model (default all-MiniLM-L6-v2)
   cosine_threshold  the similarity a hit needs (default 0.80)
 """
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from .entry import CacheEntry, ToolCall
 from .models.embeddings import EmbeddingModel
@@ -45,11 +51,34 @@ class Lookup:
 
 
 class AgentCacheManager:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, path: str | Path | None = None) -> None:
+        """path: the cache file shared by the run's processes (None: this process only)."""
         self.store = SemanticCacheStore()
         self.embedding_model = EmbeddingModel(model_name=config.get("embedding_model", DEFAULT_MODEL))
         self.threshold = float(config.get("cosine_threshold", DEFAULT_THRESHOLD))
         self.embedding_model.encode("warm-up")  # load the model now: a missing package fails at start
+        self.path = Path(path) if path else None
+        self.load()
+
+    def load(self) -> None:
+        """Add the requests cached by earlier processes of the run (nothing if there is no file yet)."""
+        if not self.path or not self.path.exists():
+            return
+        for e in json.loads(self.path.read_text()):
+            self.store.insert(request_id=e["id"], testcase=e["testcase"], original_request=e["request"],
+                              tool_calls=[ToolCall.from_dict(c) for c in e["calls"]], netlist_id=e["testcase"],
+                              embedding=e["embedding"])
+
+    def save(self) -> None:
+        """Write the whole cache to the file (via a temporary file, so a crash leaves the old one)."""
+        if not self.path:
+            return
+        data = [{"id": e.request_id, "testcase": e.testcase, "request": e.original_request,
+                 "calls": [c.to_dict() for c in e.tool_calls], "embedding": [round(x, 6) for x in e.embedding]}
+                for e in self.store.get_all_entries()]
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(data))
+        temporary.replace(self.path)
 
     def lookup(self, request: str) -> Lookup:
         """The most similar earlier request, and whether it is a hit."""
@@ -79,3 +108,4 @@ class AgentCacheManager:
         self.store.insert(request_id=f"{case}_{len(self.store.entries) + 1}", testcase=case,
                           original_request=request, tool_calls=tool_calls, netlist_id=case,
                           embedding=embedding)
+        self.save()

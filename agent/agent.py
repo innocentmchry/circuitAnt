@@ -88,7 +88,8 @@ class Agent:
         self.cache_manager = None  # tools chosen from similar earlier requests
         if (cache_config or {}).get("enabled"):
             from agent.cache import AgentCacheManager  # imported only when used (needs sentence-transformers)
-            self.cache_manager = AgentCacheManager(cache_config)
+            # shared by the run's testcases (one process each): a file in the run's log folder
+            self.cache_manager = AgentCacheManager(cache_config, run_logs_dir(developer.get("log_dir")) / "cache.json")
 
     # -- context between requests ---------------------------------------------
 

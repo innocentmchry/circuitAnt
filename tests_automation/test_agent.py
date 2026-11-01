@@ -54,9 +54,12 @@ class WordEmbedding(EmbeddingModel):
         return vector, 0.0
 
 
-def cache() -> AgentCacheManager:
-    manager = AgentCacheManager.__new__(AgentCacheManager)  # without loading a real model
+def cache(path: Path | None = None) -> AgentCacheManager:
+    """A cache with WordEmbedding instead of a real model; path: its file (None: none)."""
+    manager = AgentCacheManager.__new__(AgentCacheManager)
     manager.store, manager.embedding_model, manager.threshold = SemanticCacheStore(), WordEmbedding(), 0.8
+    manager.path = path
+    manager.load()
     return manager
 
 
@@ -71,12 +74,12 @@ class AgentLoop(unittest.TestCase):
                 agent.tools.log.close()
         self.tmp.cleanup()
 
-    def agent(self, turns: list, access: dict | None = None, cached: bool = False) -> Agent:
+    def agent(self, turns: list, access: dict | None = None, cached: bool | Path = False) -> Agent:
         agent = Agent("unused", "scripted", output_dir=self.tmp.name, access=access)
         agent.run_analysis = self  # record() below collects what the run analysis would write
         agent.client = Script(turns)
-        if cached:
-            agent.cache_manager = cache()
+        if cached:  # True: a cache of its own; a path: the cache file shared with other agents
+            agent.cache_manager = cache(None if cached is True else cached)
         self.agents.append(agent)
         return agent
 
@@ -199,6 +202,20 @@ class AgentLoop(unittest.TestCase):
         call = agent.client.sent[-1][0][-2]["tool_calls"][0]["function"]
         self.assertEqual((call["name"], json.loads(call["arguments"])),
                          ("run_tool", {"name": "count_gates", "arguments": {}}))
+
+    def test_cache_file_is_shared_with_the_next_process(self):
+        shared = Path(self.tmp.name) / "cache.json"
+        first = self.agent([[("read_design", {"path": NETLIST})], "loaded", [("count_gates", {})], "4836"],
+                           cached=shared)  # one testcase's process ...
+        first.ask(f"load {NETLIST}")
+        first.ask("count the gates")
+        second = self.agent([[("read_design", {"path": NETLIST})], "loaded", [("count_gates", {})], "4836"],
+                            cached=shared)  # ... and the next one's: it starts with the first one's cache
+        self.assertEqual(len(second.cache_manager.store.entries), 2)
+        second.ask(f"load {NETLIST}")
+        self.assertEqual((self.records[-1]["cache"], self.records[-1]["llm_calls"]), ("hit", 2))
+        second.ask("count all the gates")
+        self.assertEqual((self.records[-1]["cache"], self.records[-1]["llm_calls"]), ("hit", 2))
 
     def test_cache_miss_sends_what_an_agent_without_cache_sends(self):
         turns = [[("read_design", {"path": NETLIST})], "loaded", [("count_gates", {})], "4836 gates"]

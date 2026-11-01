@@ -305,6 +305,7 @@ Endpoint keywords for depth/path tools: `ANY_PI`, `ANY_DFF_Q`, `ANY_START`
 | Per-request logs (developer mode) | `debugging/logs/<run>/<case>_request_<n>_<time>.log`: the tools offered, prompt, context, every model turn, tool results, and a **TRACE** at the end: one line per LLM call (each tool call with its arguments, what it ran -- e.g. `run_tool(...) -> get_cone`, `NOT RUN, description returned`, `REPEAT, refused` -- and ok / ERROR) |
 | Tools actually called (developer mode) | `debugging/run_analysis_<run>.csv`, one row per request; compare with `predicted_run_analysis.csv` (an expectation, not ground truth — see [debugging/README.md](debugging/README.md)) |
 | The run's settings (developer mode) | `debugging/run_info_<run>.json`: provider, model, tool access, design format, git commit |
+| The cache (`cache.enabled: true`) | `debugging/logs/<run>/cache.json`, shared by the run's testcases: per answered request its text, testcase, engine calls and embedding (384 numbers). In the run analysis: `cache` (hit / miss / refused), `cache_tool`, `cache_similarity`, `cache_match`; in each request log, the TRACE's first line |
 
 A run is one `run.sh` invocation (all its testcases) or one direct `circuitant`
 call; `<run>` is its start time, e.g. `20261010_190424`.
