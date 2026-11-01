@@ -385,8 +385,7 @@ class Tools:
                      {"gate_type": "OR", "allowed": "NAND,NOT", "signal": "X"}),
                     ("decompose XOR in the cone of X into AND, OR and NOT",
                      {"gate_type": "XOR", "allowed": "AND,OR,NOT", "signal": "X"})),
-          instead={"remap_gates": "to make all the logic of the design, or of a cone, use only a gate set: one "
-                                  "call whatever gate types are there, not one call per type"})
+          instead={"remap_gates": "to rebuild all the logic (of the design or a cone) with a gate set"})
     def replace_gate_type(self, gate_type: Annotated[GateType, Param("the type to replace, e.g. XOR, OR")],
                           allowed: Annotated[GateTypes, Param(
                               "the types the replacement may use, e.g. \"NAND\", \"NOR\", \"NAND,NOT\", "

@@ -37,10 +37,12 @@ SYSTEM_PROMPT = (
 CACHE_PROMPT = (
     "You are an expert EDA assistant working on a gate-level Verilog netlist through tools. A similar "
     "earlier request was answered with the tools offered here. If they fit the user's request, call them "
-    "with arguments taken from it, using signal, gate and file names exactly as it gives them. If they do "
-    "not fit, reply without calling a tool.\n"
+    "with arguments taken from the user's request, using its signal, gate and file names exactly as it "
+    "gives them. The earlier request may be about another design: its names and paths are not the user's, "
+    "and its calls only show how the arguments are written. If the tools do not fit, reply without calling "
+    "a tool.\n"
     "Earlier request: {request}\n"
-    "Its calls: {calls}"
+    "Its calls (an example of the format): {calls}"
 )
 
 
