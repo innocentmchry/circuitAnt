@@ -124,7 +124,8 @@ class Tools:
 
     @tool(examples=(("how many outputs have depth greater than 4", {"operator": ">", "threshold": 4}),
                     ("which output has the deepest fanin cone", {"metric": "depth"}),
-                    ("which primary output has the largest fanin logic cone", {"metric": "cone_size"})))
+                    ("which primary output has the largest fanin logic cone", {"metric": "cone_size"})),
+          instead={"get_cone": "for the cone of one named signal"})
     def get_endpoint_stats(
             self,
             sink: Annotated[EndPoint, Param("the endpoints, each scored separately; ANY_PO = each primary-"
@@ -143,7 +144,9 @@ class Tools:
                     "how many NAND (or any type) gates are in the cone of X (read the type's count)",
                     "how many gates are in the fanin cone of X",
                     ("gates reachable from X", {"direction": "fanout"}),
-                    ("gates shared between the fanin cones of A and B", {"signal": "A", "shared_with": "B"})))
+                    ("gates shared between the fanin cones of A and B", {"signal": "A", "shared_with": "B"})),
+          instead={"get_endpoint_stats": "to compare every output (or flip-flop input) at once, e.g. which "
+                                         "primary output has the largest or deepest fanin cone"})
     def get_cone(self, signal: Signal,
                  direction: Annotated[str, Param("fanin: the gates the signal depends on; fanout: the gates "
                                                  "reachable from / driven by the signal",
@@ -382,7 +385,8 @@ class Tools:
                      {"gate_type": "OR", "allowed": "NAND,NOT", "signal": "X"}),
                     ("decompose XOR in the cone of X into AND, OR and NOT",
                      {"gate_type": "XOR", "allowed": "AND,OR,NOT", "signal": "X"})),
-          instead={"remap_gates": "to rebuild all the logic (of the design or a cone) with a gate set"})
+          instead={"remap_gates": "to make all the logic of the design, or of a cone, use only a gate set: one "
+                                  "call whatever gate types are there, not one call per type"})
     def replace_gate_type(self, gate_type: Annotated[GateType, Param("the type to replace, e.g. XOR, OR")],
                           allowed: Annotated[GateTypes, Param(
                               "the types the replacement may use, e.g. \"NAND\", \"NOR\", \"NAND,NOT\", "
@@ -443,7 +447,8 @@ def schema(fn) -> dict:
     for other, when in getattr(fn, "instead", {}).items():
         description += f"\nUse {other} instead {when}."
     if getattr(fn, "grounded", ()):
-        description += f"\nRefused unless the request itself names the {' and '.join(fn.grounded)}."
+        description += (f"\nRefused unless the request itself names the {' and '.join(fn.grounded)} "
+                        f"(for a file, its file name is enough).")
     return {"type": "function", "function": {
         "name": fn.__name__,
         "description": description,
