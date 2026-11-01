@@ -12,6 +12,11 @@ set -euo pipefail
 
 OPENROAD="${OPENROAD_BIN:-$HOME/OpenROAD/build/bin/openroad}"
 export ABC_BIN="${ABC_BIN:-$HOME/abc/abc}"  # ABC used for equivalence proofs
+# Extra packages OpenROAD's Python does not have (sentence-transformers for the cache), e.g. a conda
+# env's site-packages; only for OpenROAD, so the system python3 is not affected.
+if [[ -n "${CIRCUITANT_PYTHONPATH:-}" ]]; then
+  export PYTHONPATH="$CIRCUITANT_PYTHONPATH${PYTHONPATH:+:$PYTHONPATH}"
+fi
 [[ -x "$OPENROAD" ]] || { echo "openroad_python.sh: missing $OPENROAD" >&2; exit 127; }
 [[ $# -ge 1 ]] || { echo "usage: openroad_python.sh <script.py> [args...]" >&2; exit 2; }
 

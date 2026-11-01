@@ -5,9 +5,12 @@ earlier request used; see manager.py.  The experiments on the cache are in exper
 """
 
 from .entry import CacheDecision, CacheEntry, CandidateMatch, ToolCall
+from .manager import AgentCacheManager, Lookup
 from .store import SemanticCacheStore
 
 __all__ = [
+    "AgentCacheManager",
+    "Lookup",
     "SemanticCacheStore",
     "CacheDecision",
     "CacheEntry",

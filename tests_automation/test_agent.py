@@ -6,7 +6,9 @@ Checks the safeguards against a model that repeats itself: an identical call is 
 design changed since), the request stops after MAX_STUCK_TURNS LLM calls in a row whose tool calls all
 fail -- repeats or refusals -- (but not for parallel copies within one call, nor for an error the model
 then fixes), a graph-mode run_tool that only returned a description is not a repeat, and setting the
-current testcase name again keeps its log.
+current testcase name again keeps its log.  And the cache (agent/cache/): a hit takes a short first turn
+with only the cached tools, then the normal loop; a refused or failing first turn falls back to it; a
+miss sends what an agent without the cache sends.
 """
 import json
 import sys
@@ -17,7 +19,10 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from agent import Agent  # noqa: E402
-from agent.agent import MAX_STUCK_TURNS  # noqa: E402
+from agent.agent import CACHE_PROMPT, MAX_STUCK_TURNS, SYSTEM_PROMPT  # noqa: E402
+from agent.cache.manager import AgentCacheManager  # noqa: E402
+from agent.cache.models.embeddings import EmbeddingModel  # noqa: E402
+from agent.cache.store import SemanticCacheStore  # noqa: E402
 from agent.llm import Reply, ToolCall  # noqa: E402
 
 NETLIST = str(HERE / "test10.v")
@@ -28,13 +33,31 @@ class Script:
 
     def __init__(self, turns: list):
         self.turns = list(turns)
+        self.sent = []  # (messages, tool names) of every call, as sent
 
     def complete(self, messages, tools):
+        self.sent.append((json.loads(json.dumps(messages)), [t["function"]["name"] for t in tools]))
         turn = self.turns.pop(0) if self.turns else "done"
         if isinstance(turn, str):
             return Reply(turn, [], "end_turn", 1, 0, 0, 1, {})
         return Reply("", [ToolCall(f"c{len(self.turns)}{i}", n, json.dumps(a)) for i, (n, a) in enumerate(turn)],
                      "tool_use", 1, 0, 0, 1, {})
+
+
+class WordEmbedding(EmbeddingModel):
+    """Words hashed into a vector: similar wording, similar vector (no model to load)."""
+
+    def encode(self, text):
+        vector = [0.0] * 64
+        for word in text.lower().split():
+            vector[sum(map(ord, word)) % 64] += 1.0
+        return vector, 0.0
+
+
+def cache() -> AgentCacheManager:
+    manager = AgentCacheManager.__new__(AgentCacheManager)  # without loading a real model
+    manager.store, manager.embedding_model, manager.threshold = SemanticCacheStore(), WordEmbedding(), 0.8
+    return manager
 
 
 class AgentLoop(unittest.TestCase):
@@ -48,15 +71,18 @@ class AgentLoop(unittest.TestCase):
                 agent.tools.log.close()
         self.tmp.cleanup()
 
-    def agent(self, turns: list, access: dict | None = None) -> Agent:
+    def agent(self, turns: list, access: dict | None = None, cached: bool = False) -> Agent:
         agent = Agent("unused", "scripted", output_dir=self.tmp.name, access=access)
         agent.run_analysis = self  # record() below collects what the run analysis would write
         agent.client = Script(turns)
+        if cached:
+            agent.cache_manager = cache()
         self.agents.append(agent)
         return agent
 
-    def record(self, case, prompt, calls, usage, costs, ops, seconds):
-        self.records.append({"calls": calls, "ops": ops, "llm_calls": usage.llm_calls})
+    def record(self, case, prompt, calls, usage, costs, ops, seconds, cache=None):
+        self.records.append({"calls": calls, "ops": ops, "llm_calls": usage.llm_calls,
+                             "cache": cache.status() if cache else None})
 
     def test_identical_call_refused_and_request_stopped(self):
         agent = self.agent([[("read_design", {"path": NETLIST})], "loaded"]
@@ -117,6 +143,70 @@ class AgentLoop(unittest.TestCase):
         agent.client = Script([[("set_testcase_name", {"name": "t1"})], "again"])
         agent.ask("Start testcase t1 again.")
         self.assertIn("kept", (Path(self.tmp.name) / "t1.log").read_text())
+
+    # -- the cache ----------------------------------------------------------------
+
+    def cached_agent(self, last_turns: list, access: dict | None = None, load=None) -> Agent:
+        """An agent with a cache that has seen "count the gates" (-> count_gates) and is asked a
+        similar request next, which the model answers with last_turns."""
+        first = [[load or ("read_design", {"path": NETLIST})], "loaded"]
+        if access:  # graph mode: describe count_gates (run_tool returns its description), then run it
+            run = ("run_tool", {"name": "count_gates", "arguments": {}})
+            counted = [[run], [run], "4836 gates"]
+        else:
+            counted = [[("count_gates", {})], "4836 gates"]
+        agent = self.agent(first + counted + last_turns, access=access, cached=True)
+        agent.ask(f"load {NETLIST}")
+        agent.ask("count the gates")
+        self.assertEqual(self.records[-1]["cache"], "miss")
+        return agent
+
+    def test_cache_hit_takes_a_short_turn_then_the_normal_loop(self):
+        agent = self.cached_agent([[("count_gates", {})], "4836 gates again"])
+        self.assertEqual(agent.ask("count all the gates"), "4836 gates again")
+        last = self.records[-1]
+        self.assertEqual((last["cache"], last["llm_calls"], last["calls"]), ("hit", 2, [("count_gates", {})]))
+        (short, short_tools), (full, _) = agent.client.sent[-2:]
+        self.assertEqual(short_tools, ["count_gates"])  # only the cached tool
+        self.assertEqual(short[0]["content"].split("\n")[0], CACHE_PROMPT.split("\n")[0])
+        self.assertEqual([m["role"] for m in short], ["system", "user"])  # no history
+        self.assertTrue(full[0]["content"].startswith(SYSTEM_PROMPT))  # turn 2: the full prompt,
+        self.assertEqual(full[-2]["tool_calls"][0]["function"]["name"], "count_gates")  # with turn 1's call
+
+    def test_cache_tools_refused_fall_back_to_the_normal_loop(self):
+        agent = self.cached_agent(["count_gates does not fit", [("count_gates", {})], "4836 gates"])
+        self.assertEqual(agent.ask("count all the gates"), "4836 gates")
+        last = self.records[-1]
+        self.assertEqual((last["cache"], last["llm_calls"]), ("refused", 3))
+        full = agent.client.sent[-2][0]  # a normal first turn, without the refused short turn
+        self.assertTrue(full[0]["content"].startswith(SYSTEM_PROMPT))
+        self.assertEqual([m["role"] for m in full], ["system", "user"])
+
+    def test_cache_turn_error_is_kept_and_only_successful_calls_are_cached(self):
+        agent = self.cached_agent([[("count_gates", {"design": "x"})], [("count_gates", {})], "4836 gates"])
+        self.assertEqual(agent.ask("count all the gates"), "4836 gates")
+        self.assertEqual(self.records[-1]["llm_calls"], 3)
+        self.assertIn('"error"', agent.client.sent[-2][0][-1]["content"])  # turn 2 sees turn 1's error
+        stored = agent.cache_manager.store.get_exact_match("count all the gates")
+        self.assertEqual([(c.tool, c.args) for c in stored.tool_calls], [("count_gates", {})])
+
+    def test_graph_cache_hit_is_written_as_run_tool_and_runs(self):
+        agent = self.cached_agent([[("count_gates", {})], "done"],
+                                  access={"access": "graph", "graph": {"core": ["read_design"]}})
+        agent.ask("count all the gates")
+        last = self.records[-1]
+        self.assertEqual((last["cache"], last["llm_calls"], last["calls"]), ("hit", 2, [("count_gates", {})]))
+        call = agent.client.sent[-1][0][-2]["tool_calls"][0]["function"]
+        self.assertEqual((call["name"], json.loads(call["arguments"])),
+                         ("run_tool", {"name": "count_gates", "arguments": {}}))
+
+    def test_cache_miss_sends_what_an_agent_without_cache_sends(self):
+        turns = [[("read_design", {"path": NETLIST})], "loaded", [("count_gates", {})], "4836 gates"]
+        plain, cached = self.agent(list(turns)), self.agent(list(turns), cached=True)
+        for agent in (plain, cached):
+            agent.ask(f"load {NETLIST}")
+            agent.ask("how many gates are there")
+        self.assertEqual(plain.client.sent, cached.client.sent)
 
 
 if __name__ == "__main__":

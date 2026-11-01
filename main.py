@@ -119,12 +119,14 @@ def main() -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
     section = config.get(provider) or {}
     agent = Agent(key, model, config.get("developer", {}), design_config(config, args.config), output_dir,
-                  provider, section.get("cache", True), section.get("price"), config.get("tools"))
+                  provider, section.get("cache", True), section.get("price"), config.get("tools"),
+                  cache_config=config.get("cache"))
     if agent.run_analysis:  # developer mode: record what this run used (no keys)
         write_run_info(agent.logs_dir.name, {
             "config": str(Path(args.config).resolve()), "provider": provider, "model": model,
             provider: {k: v for k, v in section.items() if k != "api_key"},
-            "tools": config.get("tools") or {"access": "all"}, "design": config.get("design") or {}})
+            "tools": config.get("tools") or {"access": "all"}, "design": config.get("design") or {},
+            "cache": config.get("cache") or {"enabled": False}})
 
     n = 0
     context = ""  # summary of earlier requests, passed into the next one

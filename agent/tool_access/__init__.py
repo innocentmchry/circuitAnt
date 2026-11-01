@@ -6,6 +6,10 @@ Each mode is a class with
                                     same tools: each distinct list is a stable, cacheable prompt prefix)
   begin(request, text)              a new request: its number and text
   execute(name, arguments) -> Outcome   run one tool call of the current request
+  focused(names) -> [tool schema]   only the named engine tools, offered directly (the short first
+                                    turn of a cache hit, see agent/cache/)
+  as_call(name, arguments) -> (name, arguments)   a call of a focused tool as the full tool list
+                                    makes it, so later turns see an ordinary conversation
 The agent, the engine and tools.py are the same in every mode, so modes can be compared.
 
 Modes (config `tools.access`):

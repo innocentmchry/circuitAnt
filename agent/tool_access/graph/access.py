@@ -121,6 +121,24 @@ class GraphAccess:
         self.direct.begin(request, text)
         self.described = set()
 
+    def focused(self, names: list[str]) -> list[dict]:
+        """The schemas of the named tools only (the short first turn of a cache hit).  Their schemas
+        are offered in full, so they count as described: run_tool may run them from now on."""
+        self.described.update(n for n in names if n in self.direct.functions)
+        return self.direct.focused(names)
+
+    def as_call(self, name: str, arguments: str) -> tuple[str, str]:
+        """A call of a focused tool as the full tool list makes it: run_tool with its name and
+        arguments, unless it is a core tool (or not a tool, or its arguments are not JSON)."""
+        name = self.tool_name(name)
+        if name in self.core or name not in self.direct.functions:
+            return name, arguments
+        try:
+            args = json.loads(arguments or "{}")
+        except json.JSONDecodeError:
+            return name, arguments
+        return "run_tool", json.dumps({"name": name, "arguments": args})
+
     def execute(self, name: str, arguments: str) -> Outcome:
         if name in self.core:
             return self.direct.execute(name, arguments)

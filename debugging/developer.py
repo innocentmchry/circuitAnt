@@ -387,7 +387,7 @@ class RunAnalysis:
 
     COLUMNS = ["testcase_number", "prompt", "tool_called", "tool_input_structure", "graph_ops",
                "llm_calls", "seconds", "input_tokens", "cached_input_tokens", "output_tokens",
-               "input_chars", "output_chars"]
+               "input_chars", "output_chars", "cache", "cache_tool", "cache_similarity", "cache_match"]
     COST_COLUMNS = ["cost_list_usd", "cost_billed_usd"]
 
     def __init__(self, run_id: str, costs: bool = False) -> None:
@@ -397,11 +397,14 @@ class RunAnalysis:
         self.started: set = set()  # testcases begun in this run
 
     def record(self, case: str, prompt: str, calls: List[tuple], usage: Any, costs: Any = None,
-               ops: List[tuple] = (), seconds: float = 0.0) -> None:
+               ops: List[tuple] = (), seconds: float = 0.0, cache: Any = None) -> None:
         """calls: [(tool name, {argument: value})] of the engine tools, in the order they were made;
         usage: llm.Usage; costs: (list, billed) USD or None; ops: the other tool calls, as calls
         (e.g. tool knowledge graph navigation; none in access mode "all"); seconds: wall-clock
-        time from the request to its answer (LLM calls and tools)."""
+        time from the request to its answer (LLM calls and tools); cache: what the cache found
+        (agent.cache.Lookup; None: no cache) -- hit / refused (the model answered the short turn
+        without its tools) / miss, the tools of the most similar earlier request, its similarity and
+        its text, so right and wrong tool choices can be counted against tool_called."""
         rows = []
         if self.path.exists():  # by column name, so a file written with other columns still merges
             with open(self.path, newline="") as fh:
@@ -418,6 +421,10 @@ class RunAnalysis:
                "input_tokens": usage.input_tokens, "cached_input_tokens": usage.cached_input_tokens,
                "output_tokens": usage.output_tokens, "input_chars": usage.input_chars,
                "output_chars": usage.output_chars}
+        if cache:
+            row.update(cache=cache.status(), cache_tool=" ; ".join(cache.tools),
+                       cache_similarity=f"{cache.similarity:.3f}" if cache.entry else "",
+                       cache_match=cache.entry.original_request if cache.entry else "")
         if costs:
             row.update(cost_list_usd=f"{costs[0]:.6f}", cost_billed_usd=f"{costs[1]:.6f}")
         rows.append(row)

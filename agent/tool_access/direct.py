@@ -39,6 +39,14 @@ class DirectAccess:
         """The tool schemas sent with the next LLM call (here: always all of them)."""
         return self.schemas
 
+    def focused(self, names: list[str]) -> list[dict]:
+        """The schemas of the named tools only (the short first turn of a cache hit)."""
+        return [s for s in self.schemas if s["function"]["name"] in names]
+
+    def as_call(self, name: str, arguments: str) -> tuple[str, str]:
+        """A call of a focused tool as the full tool list makes it (here: the same call)."""
+        return name, arguments
+
     def execute(self, name: str, arguments: str) -> Outcome:
         """Run one tool call of the current request (arguments: its JSON text)."""
         try:

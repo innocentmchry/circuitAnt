@@ -7,7 +7,7 @@ import json
 import time
 from pathlib import Path
 
-from agent.llm import PROVIDERS, Usage, message_chars
+from agent.llm import PROVIDERS, ToolCall, Usage, message_chars
 from debugging.developer import ConversationLogger, NoopLogger, RunAnalysis, extract_case_name, run_logs_dir
 from agent.tool_access import make_access
 from agent.tools import Tools, changes_design
@@ -32,6 +32,17 @@ SYSTEM_PROMPT = (
     "- Do not discuss scoring or evaluation."
 )
 
+# The short first turn of a cache hit (agent/cache/): instead of the full prompt, the tools a similar
+# earlier request ran and that request as an example of their arguments.
+CACHE_PROMPT = (
+    "You are an expert EDA assistant working on a gate-level Verilog netlist through tools. A similar "
+    "earlier request was answered with the tools offered here. If they fit the user's request, call them "
+    "with arguments taken from it, using signal, gate and file names exactly as it gives them. If they do "
+    "not fit, reply without calling a tool.\n"
+    "Earlier request: {request}\n"
+    "Its calls: {calls}"
+)
+
 
 class Agent:
     """Answers one request at a time.
@@ -51,7 +62,8 @@ class Agent:
         developer: the config's `developer` section ({"mode": bool, "log_dir": path});
         design: its `design` section (how netlists are read, see design_io.read_design);
         output_dir: where testcase logs, written designs and result lists go;
-        cache_config: optional caching configuration."""
+        cache_config: the config's `cache` section (tools chosen from similar earlier requests, see
+        agent/cache/manager.py); off unless {"enabled": true}."""
         self.client = PROVIDERS[provider](api_key, model, cache)
         self.price = price
         self.model = model
@@ -73,14 +85,10 @@ class Agent:
             self.logs_dir = Path(".")  # unused
             self.Logger = NoopLogger
 
-        # Semantic tool-call cache
-        self.cache_manager = None
-        if cache_config and cache_config.get("enabled"):
-            try:
-                from agent.cache import AgentCacheManager
-                self.cache_manager = AgentCacheManager(cache_config)
-            except Exception as exc:
-                print(f"[WARNING] Failed to initialize AgentCacheManager: {exc}")
+        self.cache_manager = None  # tools chosen from similar earlier requests
+        if (cache_config or {}).get("enabled"):
+            from agent.cache import AgentCacheManager  # imported only when used (needs sentence-transformers)
+            self.cache_manager = AgentCacheManager(cache_config)
 
     # -- context between requests ---------------------------------------------
 
@@ -123,28 +131,19 @@ class Agent:
             if context_summary and self.developer_mode:
                 log._fh.write(f"  ── CONTEXT ──\n  {context_summary}\n  ─────────────\n\n")
             tool_summaries, calls, ops, usage, trace = [], [], [], Usage(), []
+            succeeded = []  # the engine calls that ran without error, for the cache
             started = time.monotonic()
+            found = self.cache_manager.lookup(request) if self.cache_manager else None
+            if found:
+                trace.append(f"cache: {'hit' if found.hit else 'miss'}" + (
+                    f", similarity {found.similarity:.3f} to {found.entry.original_request!r} "
+                    f"({', '.join(found.tools)})" if found.entry else "") + (
+                    f"; {found.rejected}" if found.rejected else ""))
             try:
-                cached_hit, answer = False, None
-                if self.cache_manager:
-                    try:
-                        cached_hit, answer = self.cache_manager.try_execute_cached_plan(
-                            self, request, context_summary, tool_summaries, calls, log
-                        )
-                        if cached_hit:
-                            trace.append("cache: hit (LLM planning bypassed)")
-                    except Exception as exc:
-                        log.log_tool_result("cache_error", f"{type(exc).__name__}: {exc}")
-                        cached_hit = False
-
-                if not cached_hit:
-                    answer = self._answer(request, context_summary, tool_summaries, calls, ops, usage, log, trace)
-                    if self.cache_manager and answer and not answer.startswith("[ERROR]"):
-                        try:
-                            self.cache_manager.update_on_success(request, self.tools.case or self.case, calls, context_summary)
-                        except Exception:
-                            pass
-
+                answer = self._answer(request, context_summary, tool_summaries, calls, ops, usage, log, trace,
+                                      succeeded, found if found and found.hit else None)
+                if self.cache_manager and not answer.startswith("[ERROR]"):
+                    self.cache_manager.record(request, self.tools.case or self.case, succeeded)
                 self._remember(request, tool_summaries)
                 log.log_final_response(answer)
                 return answer
@@ -154,18 +153,26 @@ class Agent:
                 log.log_usage(usage, costs)
                 if self.run_analysis:  # the testcase name is known once set_testcase_name has run
                     self.run_analysis.record(self.tools.case or self.case, request, calls, usage, costs, ops,
-                                             time.monotonic() - started)
+                                             time.monotonic() - started, found)
 
     def _answer(self, request: str, context_summary: str, tool_summaries: list[str], calls: list,
-                ops: list, usage: Usage, log, trace: list) -> str:
+                ops: list, usage: Usage, log, trace: list, succeeded: list | None = None,
+                hit=None) -> str:
         """The answer to one request; fills tool_summaries (history lines), calls ((name, arguments) of the
-        engine tools run), ops ((name, arguments) of the other tool calls, e.g. graph navigation), usage
-        (tokens and characters over all LLM calls) and trace (one line per LLM call, for the log).
+        engine tools run), succeeded (those of them that ran without error), ops ((name, arguments) of the
+        other tool calls, e.g. graph navigation), usage (tokens and characters over all LLM calls) and
+        trace (one line per LLM call, for the log).
 
         A call identical to one already made in the request (same tool, same arguments) is refused --
         unless the design changed since -- and after MAX_STUCK_TURNS consecutive LLM calls whose tool calls
         all fail (repeats, refusals, errors) the request is stopped: models can otherwise loop until
-        MAX_TOOL_ROUNDS (seen: a new refused testcase name in every turn)."""
+        MAX_TOOL_ROUNDS (seen: a new refused testcase name in every turn).
+
+        hit: a cache hit (agent.cache.Lookup).  Turn 1 is then short: CACHE_PROMPT with the similar
+        earlier request, the request, and only the tools that request ran, no history.  Its tool calls are
+        written into the conversation as the full tool list makes them (access.as_call) and run as usual;
+        turn 2 on is the normal loop, with the full prompt.  A turn 1 without tool calls (the model found
+        the tools do not fit) is dropped, and the request starts again with a normal turn."""
         self.access.begin(self.requests, request)
         offered = None  # the tool list of the previous LLM call, to log it when it changes
         made, stuck = set(), 0  # (tool, arguments) of the calls made since the design last changed
@@ -173,16 +180,33 @@ class Agent:
         if context_summary:
             messages.append({"role": "system", "content": f"Current state: {context_summary}"})
         messages.append({"role": "user", "content": request})
+        short = None  # the messages of a cache hit's short turn 1
+        if hit:
+            example = "; ".join(call.signature_str() for call in hit.entry.tool_calls)
+            short = [{"role": "system", "content": CACHE_PROMPT.format(request=hit.entry.original_request,
+                                                                        calls=example)},
+                     {"role": "user", "content": request}]
         for turn in range(1, MAX_TOOL_ROUNDS + 1):
-            log.log_llm_prompt(messages, turn)
+            focused = short is not None and turn == 1
+            sent = short if focused else messages
+            log.log_llm_prompt(sent, turn)
             start = time.monotonic()
-            tools = self.access.offered()  # may change within a request (graph: run_tool after describe)
+            # may change within a request (graph: run_tool after describe)
+            tools = self.access.focused(hit.tools) if focused else self.access.offered()
             if tools is not offered:
                 log.log_tools_offered([t["function"]["name"] for t in tools])
                 offered = tools
-            reply = self.client.complete(messages, tools)
-            usage.add(reply, len(json.dumps(tools)) + message_chars(messages))
+            reply = self.client.complete(sent, tools)
+            usage.add(reply, len(json.dumps(tools)) + message_chars(sent))
             log.log_llm_response(reply, turn, time.monotonic() - start)
+            if focused:
+                if not reply.tool_calls:  # the cached tools do not fit: start again with a normal turn
+                    hit.refused = True
+                    self.access.begin(self.requests, request)  # graph: the focused tools are not described
+                    trace.append(f"turn {turn}: cache tools refused ({', '.join(hit.tools)})")
+                    continue
+                reply.tool_calls = [ToolCall(c.id, *self.access.as_call(c.name, c.arguments))
+                                    for c in reply.tool_calls]
             messages.append(reply.message())
             if not reply.tool_calls:
                 trace.append(f"turn {turn}: answer")
@@ -212,6 +236,8 @@ class Agent:
                 if outcome.engine_call:  # history and the run analysis record the engine tools run
                     name = outcome.engine_call[0]
                     calls.append(outcome.engine_call)
+                    if status == "ok" and succeeded is not None:
+                        succeeded.append(outcome.engine_call)
                     tool_summaries.append(_summarize(name, outcome.result))
                     if name == "read_design" and '"error"' not in outcome.result:
                         log.log_netlist(self.tools.design)
@@ -220,7 +246,7 @@ class Agent:
                 else:
                     ops.append((call.name, args))
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": outcome.result})
-            trace.append(f"turn {turn}: " + "; ".join(steps))
+            trace.append(f"turn {turn}{' (cache)' if focused else ''}: " + "; ".join(steps))
             stuck = 0 if progress else stuck + 1
             if stuck >= MAX_STUCK_TURNS:
                 return (f"[ERROR] stopped: {MAX_STUCK_TURNS} LLM calls in a row whose tool calls were all refused "
