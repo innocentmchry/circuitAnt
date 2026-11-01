@@ -236,9 +236,9 @@ class GraphMode(unittest.TestCase):
         self.assertIn("did you mean", self.call("run_tool", name="get_cones", arguments={})["error"])
         self.assertIn("get_fanout", self.call("describe", tools="functions.get_fanout, 'get_ports'")["result"])
         self.assertIn("get_ports", self.call("describe", tools="functions.get_fanout, 'get_ports'")["result"])
-        self.access.execute("describe", json.dumps({"tools": "count_gates"}))
-        outcome = self.access.execute("run_tool", json.dumps({"name": "count_gates", "arguments": {}}))
-        self.assertEqual(outcome.engine_call, ("count_gates", {}))  # recorded as the engine tool
+        self.access.execute("describe", json.dumps({"tools": "find_gates"}))
+        outcome = self.access.execute("run_tool", json.dumps({"name": "find_gates", "arguments": {}}))
+        self.assertEqual(outcome.engine_call, ("find_gates", {}))  # recorded as the engine tool
         self.assertIn("no design loaded", json.loads(outcome.result)["error"])
         rows = self.call("sparql", query="SELECT ?n WHERE { ct:get_cone ca:inCategory/rdfs:label ?n }")
         self.assertEqual(rows["result"]["rows"], [["Cones"]])

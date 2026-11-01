@@ -16,10 +16,10 @@ Rules (besides those in analysis/__init__.py, which apply here too):
 from .buffering import insert_buffers_for_fanout, insert_dedicated_buffers_for_loads
 from .cleanup import (collapse_inverter_pairs, merge_duplicate_gates, remove_dangling_gates,
                       simplify_gates_with_constant_inputs)
-from .naming import rename_gate, rename_wire
+from .naming import rename, rename_gate, rename_wire
 from .resynthesis import reduce_depth, remap_gates, replace_gate_type
 
-__all__ = ["rename_gate", "rename_wire", "remove_dangling_gates", "collapse_inverter_pairs",
+__all__ = ["rename", "rename_gate", "rename_wire", "remove_dangling_gates", "collapse_inverter_pairs",
            "merge_duplicate_gates", "simplify_gates_with_constant_inputs",
            "insert_buffers_for_fanout", "insert_dedicated_buffers_for_loads",
            "reduce_depth", "remap_gates", "replace_gate_type"]

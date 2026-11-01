@@ -414,6 +414,15 @@ class Transformations(unittest.TestCase):
             self.t.rename_wire(d, "y1", "z")       # a port
         self.assertEquivalent(d)
 
+    def test_rename_either(self):  # rename: a gate or a wire, whichever the name is
+        d = read_design(HERE / "patterns.v")
+        self.assertEqual(self.t.rename(d, "g3", "renamed_gate")["kind"], "gate")
+        self.assertEqual(self.t.rename(d, "n3", "renamed_wire")["kind"], "wire")
+        self.assertEqual(connectivity(d)["renamed_gate"][1][0], ("Y", "renamed_wire"))
+        with self.assertRaises(ValueError):
+            self.t.rename(d, "no_such_name", "x")
+        self.assertEquivalent(d)
+
     def test_dangling(self):
         d = read_design(HERE / "transforms.v")
         r = self.t.remove_dangling_gates(d)

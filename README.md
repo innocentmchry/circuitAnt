@@ -279,20 +279,26 @@ the cases one group of tests needs (described in a comment at the top of each fi
 plus a copy of ICCAD test10. The Nangate45 tests are skipped if the Nangate45 files
 are not installed.
 
-## What the agent can do (30 tools, in `agent/tools.py`)
+## What the agent can do (26 tools, in `agent/tools.py`)
 
 | Kind | Tools |
 |---|---|
 | Session | `set_testcase_name`, `read_design`, `write_design` |
-| Inventory | `count_gates`, `find_gates` (by logic type such as NAND / AOI21 / FA, or cell-name pattern), `get_ports` |
+| Inventory | `find_gates` (without filters: the total and the count per type; with filters: by logic type such as NAND / AOI21 / FA, cell-name pattern, connection or name), `get_ports` |
 | Depth and paths | `get_max_depth`, `get_endpoint_stats`, `find_all_paths`, `find_cut_points` |
 | Cones and fanout | `get_cone`, `get_fanout` |
-| Patterns | `find_inverter_pairs`, `find_duplicates`, `find_enable_hold`, `derive_boolean_equation` |
+| Patterns | `find_inverter_pairs` (`collapse=true` removes them), `find_duplicates` (`merge=true` merges them), `find_enable_hold`, `derive_boolean_equation` |
 | Verification | `check_equivalence`, `check_signal_equivalence`, `check_symmetry` |
-| Clean-up | `remove_dangling_gates`, `collapse_inverter_pairs`, `merge_duplicate_gates`, `simplify_gates_with_constant_inputs` |
-| Naming | `rename_gate`, `rename_wire` |
+| Clean-up | `remove_dangling_gates`, `simplify_gates_with_constant_inputs`; inverter pairs and duplicates: the two tools above |
+| Naming | `rename` (a gate or a wire, whichever the name is) |
 | Buffering | `insert_buffers_for_fanout`, `insert_dedicated_buffers_for_loads` |
 | Resynthesis (ABC) | `reduce_depth`, `remap_gates` (whole design or a cone onto a gate set), `replace_gate_type` |
+
+A report and the change it leads to are one tool with a switch (`collapse`, `merge`), and
+counting and listing gates are one tool, so requests that differ only in that decide it by an
+argument, which the model writes from the request (this also lets the cache share entries between
+them). Run CSVs from before this merge used `count_gates`, `collapse_inverter_pairs`,
+`merge_duplicate_gates`, `rename_gate` and `rename_wire`; `experiments/compare_runs.py` maps them.
 
 Endpoint keywords for depth/path tools: `ANY_PI`, `ANY_DFF_Q`, `ANY_START`
 (sources); `ANY_PO`, `ANY_DFF_D`, `ANY_END` (sinks). Flip-flops cut paths.

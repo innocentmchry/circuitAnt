@@ -89,12 +89,12 @@ class AgentLoop(unittest.TestCase):
 
     def test_identical_call_refused_and_request_stopped(self):
         agent = self.agent([[("read_design", {"path": NETLIST})], "loaded"]
-                           + [[("count_gates", {})]] * (MAX_STUCK_TURNS + 5))
+                           + [[("find_gates", {})]] * (MAX_STUCK_TURNS + 5))
         agent.ask(f"load {NETLIST}")
         answer = agent.ask("count")
         self.assertIn("stopped", answer)
         last = self.records[-1]
-        self.assertEqual(last["calls"], [("count_gates", {})])  # ran once
+        self.assertEqual(last["calls"], [("find_gates", {})])  # ran once
         self.assertEqual(len(last["ops"]), MAX_STUCK_TURNS)  # then refused
         self.assertEqual(last["llm_calls"], MAX_STUCK_TURNS + 1)  # stopped, far below MAX_TOOL_ROUNDS
 
@@ -107,35 +107,35 @@ class AgentLoop(unittest.TestCase):
 
     def test_an_error_the_model_fixes_does_not_stop_the_request(self):
         agent = self.agent([[("read_design", {"path": NETLIST})], "loaded",
-                            [("count_gates", {"design": "x"})], [("count_gates", {"all": True})],
-                            [("count_gates", {})], "4836 gates"])  # two wrong argument sets, then right
+                            [("find_gates", {"design": "x"})], [("find_gates", {"all": True})],
+                            [("find_gates", {})], "4836 gates"])  # two wrong argument sets, then right
         agent.ask(f"load {NETLIST}")
         self.assertEqual(agent.ask("count the gates"), "4836 gates")
         self.assertEqual(self.records[-1]["llm_calls"], 4)
 
     def test_parallel_copies_in_one_call_do_not_stop_the_request(self):
         agent = self.agent([[("read_design", {"path": NETLIST})], "loaded",
-                            [("count_gates", {})] * 6, "4836 gates"])
+                            [("find_gates", {})] * 6, "4836 gates"])
         agent.ask(f"load {NETLIST}")
         self.assertEqual(agent.ask("count"), "4836 gates")  # the model sees the refusals and answers
         self.assertEqual(len(self.records[-1]["ops"]), 5)
 
     def test_same_call_allowed_after_the_design_changed(self):
         agent = self.agent([[("read_design", {"path": NETLIST})], "loaded",
-                            [("count_gates", {})], [("remove_dangling_gates", {})], [("count_gates", {})], "done"])
+                            [("find_gates", {})], [("remove_dangling_gates", {})], [("find_gates", {})], "done"])
         agent.ask(f"load {NETLIST}")
         agent.ask("count, clean up, count again")
         self.assertEqual([c for c, _ in self.records[-1]["calls"]],
-                         ["count_gates", "remove_dangling_gates", "count_gates"])
+                         ["find_gates", "remove_dangling_gates", "find_gates"])
         self.assertEqual(self.records[-1]["ops"], [])
 
     def test_graph_run_tool_returning_the_description_is_not_a_repeat(self):
-        run = ("run_tool", {"name": "count_gates", "arguments": {}})
+        run = ("run_tool", {"name": "find_gates", "arguments": {}})
         agent = self.agent([[("read_design", {"path": NETLIST})], "loaded", [run], [run], "done"],
                            access={"access": "graph", "graph": {"core": ["read_design"]}})
         agent.ask(f"load {NETLIST}")
         agent.ask("count")
-        self.assertEqual(self.records[-1]["calls"], [("count_gates", {})])  # first: description; second: runs
+        self.assertEqual(self.records[-1]["calls"], [("find_gates", {})])  # first: description; second: runs
         self.assertEqual(self.records[-1]["ops"], [run])
 
     def test_setting_the_same_testcase_again_keeps_its_log(self):
@@ -150,14 +150,14 @@ class AgentLoop(unittest.TestCase):
     # -- the cache ----------------------------------------------------------------
 
     def cached_agent(self, last_turns: list, access: dict | None = None, load=None) -> Agent:
-        """An agent with a cache that has seen "count the gates" (-> count_gates) and is asked a
+        """An agent with a cache that has seen "count the gates" (-> find_gates) and is asked a
         similar request next, which the model answers with last_turns."""
         first = [[load or ("read_design", {"path": NETLIST})], "loaded"]
-        if access:  # graph mode: describe count_gates (run_tool returns its description), then run it
-            run = ("run_tool", {"name": "count_gates", "arguments": {}})
+        if access:  # graph mode: describe find_gates (run_tool returns its description), then run it
+            run = ("run_tool", {"name": "find_gates", "arguments": {}})
             counted = [[run], [run], "4836 gates"]
         else:
-            counted = [[("count_gates", {})], "4836 gates"]
+            counted = [[("find_gates", {})], "4836 gates"]
         agent = self.agent(first + counted + last_turns, access=access, cached=True)
         agent.ask(f"load {NETLIST}")
         agent.ask("count the gates")
@@ -165,19 +165,19 @@ class AgentLoop(unittest.TestCase):
         return agent
 
     def test_cache_hit_takes_a_short_turn_then_the_normal_loop(self):
-        agent = self.cached_agent([[("count_gates", {})], "4836 gates again"])
+        agent = self.cached_agent([[("find_gates", {})], "4836 gates again"])
         self.assertEqual(agent.ask("count all the gates"), "4836 gates again")
         last = self.records[-1]
-        self.assertEqual((last["cache"], last["llm_calls"], last["calls"]), ("hit", 2, [("count_gates", {})]))
+        self.assertEqual((last["cache"], last["llm_calls"], last["calls"]), ("hit", 2, [("find_gates", {})]))
         (short, short_tools), (full, _) = agent.client.sent[-2:]
-        self.assertEqual(short_tools, ["count_gates"])  # only the cached tool
+        self.assertEqual(short_tools, ["find_gates"])  # only the cached tool
         self.assertEqual(short[0]["content"].split("\n")[0], CACHE_PROMPT.split("\n")[0])
         self.assertEqual([m["role"] for m in short], ["system", "user"])  # no history
         self.assertTrue(full[0]["content"].startswith(SYSTEM_PROMPT))  # turn 2: the full prompt,
-        self.assertEqual(full[-2]["tool_calls"][0]["function"]["name"], "count_gates")  # with turn 1's call
+        self.assertEqual(full[-2]["tool_calls"][0]["function"]["name"], "find_gates")  # with turn 1's call
 
     def test_cache_tools_refused_fall_back_to_the_normal_loop(self):
-        agent = self.cached_agent(["count_gates does not fit", [("count_gates", {})], "4836 gates"])
+        agent = self.cached_agent(["find_gates does not fit", [("find_gates", {})], "4836 gates"])
         self.assertEqual(agent.ask("count all the gates"), "4836 gates")
         last = self.records[-1]
         self.assertEqual((last["cache"], last["llm_calls"]), ("refused", 3))
@@ -186,30 +186,30 @@ class AgentLoop(unittest.TestCase):
         self.assertEqual([m["role"] for m in full], ["system", "user"])
 
     def test_cache_turn_error_is_kept_and_only_successful_calls_are_cached(self):
-        agent = self.cached_agent([[("count_gates", {"design": "x"})], [("count_gates", {})], "4836 gates"])
+        agent = self.cached_agent([[("find_gates", {"design": "x"})], [("find_gates", {})], "4836 gates"])
         self.assertEqual(agent.ask("count all the gates"), "4836 gates")
         self.assertEqual(self.records[-1]["llm_calls"], 3)
         self.assertIn('"error"', agent.client.sent[-2][0][-1]["content"])  # turn 2 sees turn 1's error
         stored = agent.cache_manager.store.get_exact_match("count all the gates")
-        self.assertEqual([(c.tool, c.args) for c in stored.tool_calls], [("count_gates", {})])
+        self.assertEqual([(c.tool, c.args) for c in stored.tool_calls], [("find_gates", {})])
 
     def test_graph_cache_hit_is_written_as_run_tool_and_runs(self):
-        agent = self.cached_agent([[("count_gates", {})], "done"],
+        agent = self.cached_agent([[("find_gates", {})], "done"],
                                   access={"access": "graph", "graph": {"core": ["read_design"]}})
         agent.ask("count all the gates")
         last = self.records[-1]
-        self.assertEqual((last["cache"], last["llm_calls"], last["calls"]), ("hit", 2, [("count_gates", {})]))
+        self.assertEqual((last["cache"], last["llm_calls"], last["calls"]), ("hit", 2, [("find_gates", {})]))
         call = agent.client.sent[-1][0][-2]["tool_calls"][0]["function"]
         self.assertEqual((call["name"], json.loads(call["arguments"])),
-                         ("run_tool", {"name": "count_gates", "arguments": {}}))
+                         ("run_tool", {"name": "find_gates", "arguments": {}}))
 
     def test_cache_file_is_shared_with_the_next_process(self):
         shared = Path(self.tmp.name) / "cache.json"
-        first = self.agent([[("read_design", {"path": NETLIST})], "loaded", [("count_gates", {})], "4836"],
+        first = self.agent([[("read_design", {"path": NETLIST})], "loaded", [("find_gates", {})], "4836"],
                            cached=shared)  # one testcase's process ...
         first.ask(f"load {NETLIST}")
         first.ask("count the gates")
-        second = self.agent([[("read_design", {"path": NETLIST})], "loaded", [("count_gates", {})], "4836"],
+        second = self.agent([[("read_design", {"path": NETLIST})], "loaded", [("find_gates", {})], "4836"],
                             cached=shared)  # ... and the next one's: it starts with the first one's cache
         self.assertEqual(len(second.cache_manager.store.entries), 2)
         second.ask(f"load {NETLIST}")
@@ -218,7 +218,7 @@ class AgentLoop(unittest.TestCase):
         self.assertEqual((self.records[-1]["cache"], self.records[-1]["llm_calls"]), ("hit", 2))
 
     def test_cache_miss_sends_what_an_agent_without_cache_sends(self):
-        turns = [[("read_design", {"path": NETLIST})], "loaded", [("count_gates", {})], "4836 gates"]
+        turns = [[("read_design", {"path": NETLIST})], "loaded", [("find_gates", {})], "4836 gates"]
         plain, cached = self.agent(list(turns)), self.agent(list(turns), cached=True)
         for agent in (plain, cached):
             agent.ask(f"load {NETLIST}")

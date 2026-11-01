@@ -17,8 +17,14 @@ DEBUG = Path(__file__).resolve().parent.parent / "debugging"
 SESSION = {"set_testcase_name", "read_design", "write_design"}
 
 
+# Tools merged into another (the old name -> the tool now doing its job), so runs from before the merge
+# compare with later ones.
+MERGED = {"count_gates": "find_gates", "collapse_inverter_pairs": "find_inverter_pairs",
+          "merge_duplicate_gates": "find_duplicates", "rename_gate": "rename", "rename_wire": "rename"}
+
+
 def tools(cell: str) -> list[str]:
-    return [t.strip() for t in cell.split(";") if t.strip()]
+    return [MERGED.get(t.strip(), t.strip()) for t in cell.split(";") if t.strip()]
 
 
 def summarize(run: str, predicted: dict, cases: tuple[int, int] | None) -> dict:

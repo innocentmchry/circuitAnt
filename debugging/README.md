@@ -17,11 +17,14 @@ It was written from the prompt wording (one row per prompt line of the 100 ICCAD
 testcases), not taken from a verified run, and it records *which tool* — not the
 answer. Read it as "the tool we expect", for spotting surprising tool choices:
 
-* **Other choices can be equally correct.** "How many NAND gates are in the design
-  now?" can be answered by `count_gates` or `find_gates`; "What is the total gate
-  count now?" by `count_gates` or from history when the previous answer stated it.
-  Redundant gates (test017) can be found with `find_duplicates` +
-  `merge_duplicate_gates` when there are no dangling gates.
+* **Other choices can be equally correct.** "What is the total gate count now?" can
+  be answered by `find_gates` or from history when the previous answer stated it.
+  Redundant gates (test017) can be found with `find_duplicates` (with `merge`) when
+  there are no dangling gates.
+* **Merged tools.** `count_gates`, `collapse_inverter_pairs`, `merge_duplicate_gates`,
+  `rename_gate` and `rename_wire` became `find_gates`, `find_inverter_pairs(collapse)`,
+  `find_duplicates(merge)` and `rename`; this file uses the new names, and
+  `experiments/compare_runs.py` maps the old names in older run CSVs.
 * **Extra calls are fine.** A run may also call `check_equivalence` after a
   transformation, or a `find_*` query before one; the file lists only the tools the
   answer needs.

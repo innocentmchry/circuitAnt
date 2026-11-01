@@ -111,10 +111,6 @@ class Tools:
         write_design(self._d(), path)
         return f"Design written to {str(path)!r}"
 
-    def count_gates(self) -> dict:
-        """Count all gates, total and broken down by type (AND, OR, NOT, NAND, NOR, XOR, XNOR, BUF, DFF)."""
-        return analysis.count_gates(self._d())
-
     @tool(examples=(("maximum logic depth of the design / the critical path", {}),
                     ("register-to-register depth", {"source": "ANY_DFF_Q", "sink": "ANY_DFF_D"}),
                     ("depth of the fanin cone of signal X", {"source": "ANY_START", "sink": "X"})),
@@ -177,7 +173,8 @@ class Tools:
         class of signals.  Loads are gate inputs and flip-flop D/CK/RN/SN pins; output ports are not loads."""
         return analysis.get_fanout(self._d(), signal, out_dir=self.out_dir)
 
-    @tool(examples=(("how many NAND gates / full adders / AOI21 cells are in the design", {"gate_type": "NAND"}),
+    @tool(examples=(("count all gates, total and broken down by type", {}),
+                    ("how many NAND gates / full adders / AOI21 cells are in the design", {"gate_type": "NAND"}),
                     ("list all XNOR gates", {"gate_type": "XNOR"}),
                     ("list 5 NAND gates with their inputs and outputs", {"gate_type": "NAND"}),
                     ("flip-flops driven by clock X", {"gate_type": "DFF", "connected_to": "X", "pin": "CK"}),
@@ -192,9 +189,13 @@ class Tools:
                    pin: Annotated[str | None, Param("the pin connected_to must be on, e.g. CK for the clock "
                                                     "pin of flip-flops")] = None,
                    name: Annotated[Gate | None, Param("one gate instance")] = None) -> dict:
-        """Gates matching every filter given, each with its type and all pin connections.  Returns the count,
-        a count per cell type (by_cell), the first gates (sorted by name) and a file listing all of them if
+        """Count or find gates: all of them by type, or those matching the filters given.  Without filters:
+        the total and the count of every gate type (AND, OR, NOT, NAND, NOR, XOR, XNOR, BUF, DFF, ...).  With
+        filters: the gates matching every filter, each with its type and all pin connections -- the count, a
+        count per cell type (by_cell), the first gates (sorted by name) and a file listing all of them if
         there are more."""
+        if gate_type is connected_to is pin is name is None:
+            return analysis.count_gates(self._d())
         return analysis.find_gates(self._d(), gate_type, connected_to, pin, name, out_dir=self.out_dir)
 
     @tool(examples=("how many primary inputs and outputs does this design have",
@@ -218,19 +219,34 @@ class Tools:
         return analysis.find_cut_points(self._d(), source, sink, signal)
 
     @tool(examples=("how many back-to-back inverter pairs are in the design",
-                    "list the double inversions (NOT gates feeding NOT gates)"),
-          instead={"collapse_inverter_pairs": "to remove the pairs (each becomes a wire), not just report them"})
-    def find_inverter_pairs(self) -> dict:
-        """Back-to-back inverters: NOT gates fed directly by another NOT gate.  Returns the count, the first
-        pairs (first gate, second gate, input, output) and a file listing all of them if there are more."""
+                    "list the double inversions (NOT gates feeding NOT gates)",
+                    ("find / locate the back-to-back inverter pairs and collapse them into wires", {"collapse": True}),
+                    ("remove double inversions", {"collapse": True})))
+    def find_inverter_pairs(self, collapse: Annotated[bool, Param(
+            "true: collapse every pair into a direct wire, repeatedly so longer NOT chains collapse too (changes "
+            "the design); default false: only report the pairs")] = False) -> dict:
+        """Back-to-back inverters (NOT gates fed directly by another NOT gate): reported, or with collapse
+        removed.  Reporting returns the count, the first pairs (first gate, second gate, input, output) and a
+        file listing all of them if there are more; collapsing returns pairs_collapsed and gates_removed."""
+        if collapse:
+            return transformation.collapse_inverter_pairs(self._d())
         return analysis.find_inverter_pairs(self._d(), out_dir=self.out_dir)
 
     @tool(examples=("how many gates are structural duplicates",
-                    "which gates compute the same function on the same inputs"),
-          instead={"merge_duplicate_gates": "to remove the duplicates (keep one per group), not just report them"})
-    def find_duplicates(self) -> dict:
-        """Structural duplicates: groups of gates of the same type on the same input signals.  Returns the
-        number of groups, how many gates could be removed (all but one per group), and the first groups."""
+                    "which gates compute the same function on the same inputs",
+                    ("merge the gates that are structural duplicates", {"merge": True}),
+                    ("remove redundant copies of a gate (same type on the same inputs)", {"merge": True})),
+          instead={"remove_dangling_gates": "for redundant gates that drive nothing used (a request for all "
+                                            "redundant gates may need both)"})
+    def find_duplicates(self, merge: Annotated[bool, Param(
+            "true: merge each group into one gate, repeatedly until none are left (changes the design); also "
+            "shares a value that is recomputed (e.g. a * b built twice); default false: only report the "
+            "groups")] = False) -> dict:
+        """Structural duplicates (gates of the same type on the same input signals): reported, or with merge
+        removed.  Reporting returns the number of groups, how many gates could be removed (all but one per
+        group) and the first groups; merging returns gates_merged and the gate count before and after."""
+        if merge:
+            return transformation.merge_duplicate_gates(self._d())
         return analysis.find_duplicates(self._d(), out_dir=self.out_dir)
 
     @tool(examples=("how many flip-flops have enable or hold structures in their D input",))
@@ -292,45 +308,23 @@ class Tools:
         return analysis.find_all_paths(self._d(), source, sink, avoid, max_depth, out_dir=self.out_dir)
 
     @tool(examples=(("rename gate g to NEW", {"old_name": "g", "new_name": "NEW"}),
-                    "change the identifier of a gate instance and update all references"),
-          instead={"rename_wire": "to rename a wire / signal"})
-    def rename_gate(self, old_name: Gate, new_name: Annotated[str, Param("the new instance name")]) -> dict:
-        """Rename a gate instance (e.g. g462 -> renamed_gate).  Connections are unchanged."""
-        return transformation.rename_gate(self._d(), old_name, new_name)
-
-    @tool(examples=(("rename wire X to NEW", {"old_name": "X", "new_name": "NEW"}),
-                    "change the identifier of a signal and update all references"),
-          instead={"rename_gate": "to rename a gate instance"})
-    def rename_wire(self, old_name: Signal, new_name: Annotated[str, Param("the new signal name")]) -> dict:
-        """Rename a wire/signal; every reference follows.  Primary input/output ports cannot be renamed."""
-        return transformation.rename_wire(self._d(), old_name, new_name)
+                    ("rename wire X to NEW", {"old_name": "X", "new_name": "NEW"}),
+                    "change the identifier of a gate instance or a signal and update all references"))
+    def rename(self, old_name: Annotated[str, Param("the gate instance (e.g. g27319) or wire / signal (e.g. n12) "
+                                                    "to rename")],
+               new_name: Annotated[str, Param("the new name")]) -> dict:
+        """Rename a gate instance or a wire (signal), whichever old_name names; connections are unchanged and
+        every reference follows.  Primary input/output ports cannot be renamed.  Returns kind (gate or wire),
+        old_name and new_name."""
+        return transformation.rename(self._d(), old_name, new_name)
 
     @tool(examples=("remove dangling gates", "prune unused gates", "trim unused wires and gates"),
-          instead={"merge_duplicate_gates": "for redundant gates that repeat another gate on the same inputs "
-                                            "(a request for all redundant gates may need both)"})
+          instead={"find_duplicates": "with merge, for redundant gates that repeat another gate on the same "
+                                      "inputs (a request for all redundant gates may need both)"})
     def remove_dangling_gates(self) -> dict:
         """Remove every gate that does not contribute to any primary output or flip-flop input (dangling /
         unused gates and the wires only they use).  Returns gates_removed and the gate count before/after."""
         return transformation.remove_dangling_gates(self._d())
-
-    @tool(examples=("find / locate the back-to-back inverter pairs and collapse them into wires",
-                    "remove double inversions"),
-          instead={"find_inverter_pairs": "to only count or list the pairs without changing the design"})
-    def collapse_inverter_pairs(self) -> dict:
-        """Collapse every back-to-back inverter pair (NOT feeding NOT) into a direct wire, repeatedly, so
-        longer NOT chains collapse too.  Returns pairs_collapsed and gates_removed."""
-        return transformation.collapse_inverter_pairs(self._d())
-
-    @tool(examples=("merge the gates that are structural duplicates",
-                    "remove redundant copies of a gate (same type on the same inputs)"),
-          instead={"find_duplicates": "to only count or list the duplicates without changing the design",
-                   "remove_dangling_gates": "for redundant gates that drive nothing used (a request for all "
-                                            "redundant gates may need both)"})
-    def merge_duplicate_gates(self) -> dict:
-        """Merge structural duplicates -- gates of the same type on the same inputs -- keeping one per group,
-        repeatedly until none are left.  Also use it to share a value that is recomputed (e.g. a * b built
-        twice): the copies are structurally identical, so merging computes it once.  Returns gates_merged."""
-        return transformation.merge_duplicate_gates(self._d())
 
     @tool(examples=(("replace every T gate that has an input tied to a constant by the simpler gate it reduces to",
                      {"gate_type": "T"}),

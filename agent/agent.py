@@ -276,9 +276,6 @@ def _summarize(tool_name: str, result_str: str) -> str:
         return "wrote design via write_design"
     if tool_name == "set_testcase_name":
         return "testcase initialized via set_testcase_name"
-    if tool_name == "count_gates":
-        parts = ", ".join(f"{n}x {t}" for t, n in sorted(data["breakdown"].items()) if n > 0)
-        return f"count_gates: {data['total_gates']} total gates ({parts})"
     if tool_name == "get_max_depth":
         summary = f"get_max_depth: depth={data.get('depth')}"
         if data.get("path"):
@@ -304,6 +301,9 @@ def _summarize(tool_name: str, result_str: str) -> str:
             return (f"get_fanout: {data['signal']} max fanout={data['max_fanout']} at "
                     f"{', '.join(data['at_max'][:3])}")
         return f"get_fanout: {data.get('signal')} drives {data.get('fanout')} pins on {data.get('gate_count')} gates"
+    if tool_name == "find_gates" and "breakdown" in data:  # without filters: every gate, by type
+        parts = ", ".join(f"{n}x {t}" for t, n in sorted(data["breakdown"].items()) if n > 0)
+        return f"find_gates: {data['total_gates']} total gates ({parts})"
     if tool_name == "find_gates":
         filters = ", ".join(f"{k}={data[k]}" for k in ("gate_type", "connected_to", "pin", "name") if k in data)
         return f"find_gates({filters}): {data.get('count')} gates"
@@ -317,8 +317,15 @@ def _summarize(tool_name: str, result_str: str) -> str:
         if "is_cut" in data:
             return f"find_cut_points: {data['signal']} is_cut={data['is_cut']} ({data['source']} -> {data['sink']})"
         return f"find_cut_points: {data.get('count')} gates on every path {data.get('source')} -> {data.get('sink')}"
+    if tool_name == "find_inverter_pairs" and "pairs_collapsed" in data:  # collapse
+        return (f"find_inverter_pairs (collapse): {data.get('pairs_collapsed', 0)} pairs collapsed, "
+                f"{data.get('gates_removed', 0)} gates removed, total gates {data.get('gates_before')} -> "
+                f"{data.get('gates_after')}")
     if tool_name == "find_inverter_pairs":
         return f"find_inverter_pairs: {data.get('count')} pairs"
+    if tool_name == "find_duplicates" and "gates_merged" in data:  # merge
+        return (f"find_duplicates (merge): {data.get('gates_merged', 0)} gates removed (merged into identical "
+                f"gates), total gates {data.get('gates_before')} -> {data.get('gates_after')}")
     if tool_name == "find_duplicates":
         return (f"find_duplicates: {data.get('count')} duplicate groups, {data.get('removable_gates')} gates "
                 f"removable at this point (merging can expose more)")
@@ -343,16 +350,10 @@ def _summarize(tool_name: str, result_str: str) -> str:
         if data.get("file_path"):
             summary += f"; full list in {data['file_path']}"
         return summary
-    if tool_name in ("rename_gate", "rename_wire"):
-        return f"{tool_name}: '{data.get('old_name')}' → '{data.get('new_name')}'"
+    if tool_name == "rename":
+        return f"rename ({data.get('kind')}): '{data.get('old_name')}' → '{data.get('new_name')}'"
     if tool_name == "remove_dangling_gates":
         return f"remove_dangling_gates: {data.get('gates_removed', 0)} gates removed"
-    if tool_name == "collapse_inverter_pairs":
-        return (f"collapse_inverter_pairs: {data.get('pairs_collapsed', 0)} pairs collapsed, "
-                f"{data.get('gates_removed', 0)} gates removed")
-    if tool_name == "merge_duplicate_gates":
-        return (f"merge_duplicate_gates: {data.get('gates_merged', 0)} gates removed (merged into identical "
-                f"gates), total gates {data.get('gates_before')} -> {data.get('gates_after')}")
     if tool_name == "simplify_gates_with_constant_inputs":
         return (f"simplify_gates_with_constant_inputs: simplified {data.get('simplified_gates', 0)} "
                 f"{data.get('gate_type', '?')} gate(s); replacements={data.get('replacement_breakdown', {})}")

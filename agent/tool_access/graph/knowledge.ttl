@@ -31,7 +31,7 @@ ct:concept.session a ca:Concept ; rdfs:label "testcase session" ;
 ct:concept.gate_count a ca:Concept ; rdfs:label "gate count" ;
     skos:altLabel "number of gates", "how many gates", "total gates", "breakdown by gate type",
                   "cell count", "inventory" ;
-    ca:answeredBy ct:count_gates, ct:find_gates .
+    ca:answeredBy ct:find_gates .
 
 ct:concept.gate_lookup a ca:Concept ; rdfs:label "finding gates" ;
     skos:altLabel "list gates", "gates of a type", "gate type of", "pin connections", "gates connected to",
@@ -40,7 +40,7 @@ ct:concept.gate_lookup a ca:Concept ; rdfs:label "finding gates" ;
 
 ct:concept.flip_flop a ca:Concept ; rdfs:label "flip-flop" ;
     skos:altLabel "register", "DFF", "sequential element", "latch", "clock pin" ;
-    ca:answeredBy ct:find_gates, ct:count_gates, ct:find_enable_hold .
+    ca:answeredBy ct:find_gates, ct:find_enable_hold .
 
 ct:concept.ports a ca:Concept ; rdfs:label "ports" ;
     skos:altLabel "primary inputs", "primary outputs", "PI", "PO", "I/O", "bit width", "interface" ;
@@ -92,12 +92,12 @@ ct:concept.buffering a ca:Concept ; rdfs:label "buffer insertion" ;
 ct:concept.inverter_pairs a ca:Concept ; rdfs:label "inverter pairs" ;
     skos:altLabel "back-to-back inverters", "double inversion", "inverter chain", "redundant inverters",
                   "NOT feeding NOT" ;
-    ca:answeredBy ct:find_inverter_pairs, ct:collapse_inverter_pairs .
+    ca:answeredBy ct:find_inverter_pairs .
 
 ct:concept.duplicates a ca:Concept ; rdfs:label "duplicate gates" ;
     skos:altLabel "structural duplicates", "redundant gates", "identical gates", "same inputs",
                   "common subexpression", "recomputed" ;
-    ca:answeredBy ct:find_duplicates, ct:merge_duplicate_gates .
+    ca:answeredBy ct:find_duplicates .
 
 ct:concept.dangling a ca:Concept ; rdfs:label "dangling gates" ;
     skos:altLabel "unused gates", "dead logic", "does not contribute", "floating", "prune", "trim",
@@ -127,7 +127,7 @@ ct:concept.symmetry a ca:Concept ; rdfs:label "symmetry" ;
 
 ct:concept.renaming a ca:Concept ; rdfs:label "renaming" ;
     skos:altLabel "rename", "change the identifier", "new name", "update all references" ;
-    ca:answeredBy ct:rename_gate, ct:rename_wire .
+    ca:answeredBy ct:rename .
 
 ct:concept.gate_set a ca:Concept ; rdfs:label "restricted gate set" ;
     skos:altLabel "only NAND", "only NOR", "NAND and NOT", "universal gates", "remap", "technology mapping",
@@ -137,21 +137,19 @@ ct:concept.gate_set a ca:Concept ; rdfs:label "restricted gate set" ;
 # --- Which tool usually comes next ---------------------------------------------------------
 
 ct:set_testcase_name ca:followedBy ct:read_design .
-ct:read_design ca:followedBy ct:count_gates .
-ct:find_inverter_pairs ca:followedBy ct:collapse_inverter_pairs .
-ct:find_duplicates ca:followedBy ct:merge_duplicate_gates .
+ct:read_design ca:followedBy ct:find_gates .
 ct:get_fanout ca:followedBy ct:insert_buffers_for_fanout .
 ct:get_max_depth ca:followedBy ct:reduce_depth .
 
-# A transformation is usually checked and measured afterwards.
-ct:remove_dangling_gates ca:followedBy ct:check_equivalence, ct:count_gates .
-ct:collapse_inverter_pairs ca:followedBy ct:check_equivalence, ct:count_gates .
-ct:merge_duplicate_gates ca:followedBy ct:check_equivalence, ct:count_gates .
-ct:simplify_gates_with_constant_inputs ca:followedBy ct:check_equivalence, ct:count_gates .
-ct:insert_buffers_for_fanout ca:followedBy ct:check_equivalence, ct:count_gates .
-ct:insert_dedicated_buffers_for_loads ca:followedBy ct:check_equivalence, ct:count_gates .
+# A transformation is usually checked and measured afterwards (find_inverter_pairs and find_duplicates
+# when they collapse / merge).
+ct:remove_dangling_gates ca:followedBy ct:check_equivalence, ct:find_gates .
+ct:find_inverter_pairs ca:followedBy ct:check_equivalence, ct:find_gates .
+ct:find_duplicates ca:followedBy ct:check_equivalence, ct:find_gates .
+ct:simplify_gates_with_constant_inputs ca:followedBy ct:check_equivalence, ct:find_gates .
+ct:insert_buffers_for_fanout ca:followedBy ct:check_equivalence, ct:find_gates .
+ct:insert_dedicated_buffers_for_loads ca:followedBy ct:check_equivalence, ct:find_gates .
 ct:reduce_depth ca:followedBy ct:check_equivalence, ct:get_max_depth .
-ct:remap_gates ca:followedBy ct:check_equivalence, ct:count_gates .
-ct:replace_gate_type ca:followedBy ct:check_equivalence, ct:count_gates .
-ct:rename_gate ca:followedBy ct:check_equivalence .
-ct:rename_wire ca:followedBy ct:check_equivalence .
+ct:remap_gates ca:followedBy ct:check_equivalence, ct:find_gates .
+ct:replace_gate_type ca:followedBy ct:check_equivalence, ct:find_gates .
+ct:rename ca:followedBy ct:check_equivalence .

@@ -28,3 +28,17 @@ def rename_wire(d: Design, old_name: str, new_name: str) -> dict:
         raise ValueError(f"a wire named {new_name!r} already exists")
     edit.rename_net(d, net, new_name)
     return {"old_name": old_name, "new_name": new_name}
+
+
+def rename(d: Design, old_name: str, new_name: str) -> dict:
+    """Rename a gate instance or a wire, whichever `old_name` names (rename_gate / rename_wire).
+    A name that is both a gate and a wire is refused (say which).  {"kind": "gate" or "wire",
+    "old_name", "new_name"}."""
+    gate, wire = d.block.findInst(old_name), d.block.findNet(old_name)
+    if gate is not None and wire is not None:
+        raise ValueError(f"{old_name!r} names both a gate and a wire")
+    if gate is not None:
+        return {"kind": "gate", **rename_gate(d, old_name, new_name)}
+    if wire is not None:
+        return {"kind": "wire", **rename_wire(d, old_name, new_name)}
+    raise ValueError(f"no gate or wire named {old_name!r}")
