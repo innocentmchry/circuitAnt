@@ -1,0 +1,4 @@
+# Dynamically synthesized tools at runtime should not dirty the git tree by default
+*.py
+!__init__.py
+__pycache__/

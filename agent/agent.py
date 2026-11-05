@@ -70,10 +70,28 @@ class Agent:
         self.price = price
         self.model = model
         self.tools = Tools(design, output_dir)
+        try:
+            from agent.dynamic_tools import load_dynamic_tools
+            load_dynamic_tools(self.tools)
+        except Exception:
+            pass
         self.access = make_access(access, self.tools)
         self.requests = 0
         self.case = ""
         self.history = []  # one line per earlier request that called tools
+        self.last_usage = None
+        self.last_calls = []
+        self.last_ops = []
+        self.last_trace = []
+        self.total_usage = Usage()
+
+        # Dynamic Tool Synthesis
+        self.synthesizer = None
+        synthesis_cfg = (developer or {}).get("synthesis", {})
+        if synthesis_cfg.get("enabled"):
+            from agent.synthesis.synthesizer import DynamicToolSynthesizer
+            synth_model = synthesis_cfg.get("model", "gpt-4o")
+            self.synthesizer = DynamicToolSynthesizer(api_key=api_key, model=synth_model, tools_instance=self.tools)
 
         # Developer mode: one human-readable log file per request.
         developer = developer or {}
@@ -151,6 +169,18 @@ class Agent:
                 log.log_final_response(answer)
                 return answer
             finally:  # a failed request still spent its tokens
+                self.last_usage = usage
+                self.last_calls = list(calls)
+                self.last_ops = list(ops)
+                self.last_trace = list(trace)
+                self.total_usage.llm_calls += usage.llm_calls
+                self.total_usage.input_tokens += usage.input_tokens
+                self.total_usage.cached_input_tokens += usage.cached_input_tokens
+                self.total_usage.cache_write_tokens += usage.cache_write_tokens
+                self.total_usage.output_tokens += usage.output_tokens
+                self.total_usage.input_chars += usage.input_chars
+                self.total_usage.output_chars += usage.output_chars
+
                 log.log_trace(trace)
                 costs = usage.costs(self.price)
                 log.log_usage(usage, costs)
