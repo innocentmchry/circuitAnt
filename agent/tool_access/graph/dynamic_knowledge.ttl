@@ -1,0 +1,6 @@
+# Dynamic tools synthesized by CircuitAnt Knowledge-Grounded Tool Synthesizer
+@prefix ca:   <https://w3id.org/circuitant/ontology#> .
+@prefix ct:   <https://w3id.org/circuitant/tools#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
